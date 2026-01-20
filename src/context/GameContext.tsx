@@ -242,7 +242,12 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       });
 
       // Team Evolution
-      const evolution = processTeamEvolution(currentGrid);
+      let evolution = { newGrid: currentGrid, logs: [] as string[] };
+      try {
+          evolution = processTeamEvolution(currentGrid, currentPlayerTeamId);
+      } catch (e) {
+          console.error("Team Evolution failed", e);
+      }
       setGrid(evolution.newGrid);
       setTurnReport(evolution.logs);
 

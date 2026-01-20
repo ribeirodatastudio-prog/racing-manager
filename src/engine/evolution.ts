@@ -7,7 +7,7 @@ export interface EvolutionReport {
   logs: string[];
 }
 
-export const processTeamEvolution = (currentGrid: Team[]): EvolutionReport => {
+export const processTeamEvolution = (currentGrid: Team[], playerTeamId?: string | null): EvolutionReport => {
   // Deep copy grid to avoid mutation issues
   const newGrid = currentGrid.map(team => ({
     ...team,
@@ -15,15 +15,20 @@ export const processTeamEvolution = (currentGrid: Team[]): EvolutionReport => {
         ...d,
         stats: { ...d.stats }
     })),
-    car: {
+    // Safe deep copy for car
+    car: team.car ? {
         ...team.car,
         stats: { ...team.car.stats }
-    }
+    } : (team.car as any)
   }));
 
   const logs: string[] = [];
 
   newGrid.forEach(team => {
+    // 0. Safety Checks & Exclusions
+    if (!team.car) return;
+    if (playerTeamId && team.id === playerTeamId) return;
+
     // 1. Roll for Outcome
     const roll = randomInt(0, 100);
     let percent = 0;
