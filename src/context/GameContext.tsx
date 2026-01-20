@@ -15,6 +15,7 @@ interface RaceResult {
   gapToAhead: number; // For UI and future calculations
   lapsCompleted: number;
   lastLapTime: number;
+  bestLapTime: number;
   rank: number;
   penalty: boolean; // Just for visual feedback
   status: 'Running' | 'Finished';
@@ -53,7 +54,7 @@ interface GameContextType {
   debugData: Record<string, LapAnalysis>;
 
   actions: {
-    startNewGame: (teamName: string) => void;
+    startNewGame: (teamName: string, driver1Name: string, driver2Name: string) => void;
     startQualifying: () => void;
     startRace: () => void;
     simulateTick: () => void; // Simulates one lap for everyone
@@ -134,13 +135,68 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
   const getPlayerTeam = () => grid.find(t => t.id === playerTeamId) || null;
 
+  const handleRaceFinish = (results: RaceResult[]) => {
+      const playerTeam = grid.find(t => t.id === playerTeamId);
+      let earnedPoints = 0;
+
+      const newDriverStandings = { ...standings.drivers };
+      const newTeamStandings = { ...standings.teams };
+
+      // Find fastest lap
+      let fastestLapTime = Infinity;
+      let fastestDriverId = null;
+
+      results.forEach(r => {
+        if (r.bestLapTime > 0 && r.bestLapTime < fastestLapTime) {
+          fastestLapTime = r.bestLapTime;
+          fastestDriverId = r.driverId;
+        }
+      });
+
+      results.forEach(r => {
+         let pts = 41 - r.rank;
+         if (pts < 1) pts = 1;
+
+         if (r.driverId === fastestDriverId) {
+            pts += 1;
+         }
+
+         if (playerTeam?.drivers.some(d => d.id === r.driverId)) {
+            earnedPoints += pts;
+         }
+
+         if (newDriverStandings[r.driverId] !== undefined) {
+            newDriverStandings[r.driverId] += pts;
+         } else {
+            newDriverStandings[r.driverId] = pts;
+         }
+
+         const driver = grid.flatMap(t => t.drivers).find(d => d.id === r.driverId);
+         if (driver) {
+             if (newTeamStandings[driver.teamId] !== undefined) {
+                 newTeamStandings[driver.teamId] += pts;
+             } else {
+                 newTeamStandings[driver.teamId] = pts;
+             }
+         }
+      });
+
+      setStandings({ drivers: newDriverStandings, teams: newTeamStandings });
+      setPoints(p => p + earnedPoints);
+      setGameState('RESULTS');
+  };
+
   const actions = {
-    startNewGame: (teamName: string) => {
+    startNewGame: (teamName: string, driver1Name: string, driver2Name: string) => {
       const newGrid = initializeSeason();
       // Replace Rank 20 with Player
       const playerTeam = newGrid[newGrid.length - 1];
       playerTeam.name = teamName;
       playerTeam.id = 'player-team';
+
+      if (playerTeam.drivers.length > 0) playerTeam.drivers[0].name = driver1Name;
+      if (playerTeam.drivers.length > 1) playerTeam.drivers[1].name = driver2Name;
+      playerTeam.drivers.forEach(d => d.teamId = playerTeam.id);
 
       setGrid(newGrid);
       setPlayerTeamId(playerTeam.id);
@@ -185,6 +241,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
           gapToAhead: 0,
           lapsCompleted: 0,
           lastLapTime: 0,
+          bestLapTime: 0,
           rank: qResults.findIndex(q => q.driverId === d.id) + 1, // Start rank based on qualy
           penalty: false,
           status: 'Running'
@@ -272,10 +329,13 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
 
          let lapTime = lapResult.lapTime;
 
+         const actualLapTime = lapResult.lapTime;
+
          return {
            ...r,
            totalTime: r.totalTime + lapTime,
-           lastLapTime: lapResult.lapTime,
+           lastLapTime: actualLapTime,
+           bestLapTime: (r.bestLapTime === 0 || actualLapTime < r.bestLapTime) ? actualLapTime : r.bestLapTime,
            lapsCompleted: nextLap,
            penalty: !lapResult.overtakeSuccess && (conditions?.gapToAhead || 10) < 3.0 && (conditions?.currentRank || 0) > (conditions?.expectedRank || 0)
          };
@@ -313,10 +373,14 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
          currentLap: isLastLap ? currentTrack.laps : nextLap,
          isRaceFinished: allFinished
       });
+
+      if (allFinished) {
+        handleRaceFinish(finalResults);
+      }
     },
 
     completeRace: () => {
-       // Placeholder
+       handleRaceFinish(raceData.results);
     },
 
     nextRace: () => {
