@@ -567,7 +567,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     };
 
     // User requested 15 seconds
-    const intervalMs = 15000 / raceSpeed;
+    const intervalMs = 750 / raceSpeed;
     const timer = setInterval(tick, intervalMs);
 
     return () => clearInterval(timer);
