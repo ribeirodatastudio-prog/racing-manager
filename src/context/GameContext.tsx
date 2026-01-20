@@ -197,6 +197,26 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
     },
 
     startRace: () => {
+      setRaceData(prev => {
+        const staggeredResults = prev.results.map(r => {
+           // We use the qualifying result order to determine the grid slot
+           const qualyIndex = prev.qualifyingResults.findIndex(q => q.driverId === r.driverId);
+           const startRank = qualyIndex + 1;
+           const stagger = (startRank - 1) * 0.5;
+
+           return {
+              ...r,
+              totalTime: stagger,
+              gapToLeader: stagger,
+              gapToAhead: startRank === 1 ? 0 : 0.5
+           };
+        });
+
+        return {
+           ...prev,
+           results: staggeredResults.sort((a, b) => a.rank - b.rank)
+        };
+      });
       setGameState('RACE');
     },
 
@@ -251,10 +271,6 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
          newDebugData[driver.id] = lapResult.analysis;
 
          let lapTime = lapResult.lapTime;
-         if (prev.currentLap === 0) {
-            const startRank = prev.qualifyingResults.findIndex(q => q.driverId === r.driverId);
-            lapTime += startRank * 0.2;
-         }
 
          return {
            ...r,
