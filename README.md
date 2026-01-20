@@ -48,12 +48,19 @@ For each segment of the track:
   - `Multiplier = Random(1 - Variance%, 1 + Variance%)`.
   - `LapTime = BasePace * Multiplier`.
 - **Traffic & Overtaking:**
-  - **Trigger:** Gap to car ahead < 3.0s AND CurrentRank > ExpectedRank (Qualy Pace).
-  - **Overtaking Check:** Performed on Straights (Short/Med/Long).
-    - `AttackScore = OvertakingStat * SegmentWeight * Random(0.8, 1.2)`.
-    - `DefendScore = OpponentInstincts * Random(0.8, 1.2)`.
-    - **Success:** `Attack > Defend`.
-  - **Dirty Air Penalty:** If overtake fails (Stuck), `LapTime *= 1.15` (+15% penalty).
+  - **Trigger:** Gap to car ahead < 3.0s AND CurrentRank > ExpectedRank.
+  - **Look Ahead Logic:** Simulation iterates segment-by-segment. If "Stuck", it checks the transition to the *Next* segment.
+  - **Combos & Modifiers:**
+    - **Divebomb (3.0x):** `Long Straight` -> `Low Speed Corner`. Best chance to pass.
+    - **Standard Pass (1.5x):** `Long Straight` -> `Medium Speed Corner`.
+    - **Dirty Air Zone (0.5x):** `Short Straight` -> `Low Speed Corner`. Hard to pass.
+    - **Base (1.0x):** All other transitions.
+  - **Formula:**
+    - `EffectiveOvertake = OvertakingStat * ComboModifier`.
+    - `Roll = EffectiveOvertake * Random(0.8, 1.2)`.
+    - `Defend = OpponentInstincts * Random(0.8, 1.2)`.
+    - **Success:** `Roll > Defend`. Clears "Stuck" status immediately.
+  - **Penalty:** While "Stuck", segment times are penalized by +15% (Dirty Air).
 
 ## Tech Stack
 - React (Vite)
