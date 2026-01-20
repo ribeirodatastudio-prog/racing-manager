@@ -47,6 +47,7 @@ export const RaceControlView = ({ onSelectDriver, selectedDriverId }: Props) => 
                    <th className="p-2">Team</th>
                    <th className="p-2 text-right">Last Lap</th>
                    <th className="p-2 text-right">Gap</th>
+                   <th className="p-2 text-right">Interval</th>
                    <th className="p-2 text-center">St</th>
                 </tr>
              </thead>
@@ -65,6 +66,7 @@ export const RaceControlView = ({ onSelectDriver, selectedDriverId }: Props) => 
                        <td className="p-2 text-gray-500">{res.teamName}</td>
                        <td className="p-2 text-right font-mono text-yellow-500">{formatTime(res.lastLapTime)}</td>
                        <td className="p-2 text-right font-mono text-cyan-300">{res.gapToLeader > 0 ? `+${formatTime(res.gapToLeader)}` : 'LEADER'}</td>
+                       <td className="p-2 text-right font-mono text-cyan-300">{res.rank === 1 ? 'INTERVAL' : `+${formatTime(res.gapToAhead)}`}</td>
                        <td className="p-2 text-center">{res.status === 'Finished' ? '🏁' : '🟢'}</td>
                      </tr>
                    );

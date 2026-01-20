@@ -60,6 +60,14 @@ export interface RaceConditions {
   expectedRank: number;
 }
 
+export interface OvertakeAttempt {
+  segmentIndex: number;
+  segmentName: string;
+  modifier: string;
+  result: 'Success' | 'Failed';
+  rollDetails: string;
+}
+
 export interface LapAnalysis {
   baseTime: number;
   segments: {
@@ -71,7 +79,7 @@ export interface LapAnalysis {
   modifiers: {
     instincts: number;
     traffic: boolean;
-    overtake: string | null;
+    overtakeAttempts: OvertakeAttempt[];
   };
   variance: number;
   finalTime: number;
@@ -80,34 +88,107 @@ export interface LapAnalysis {
 export const simulateLap = (
   driver: Driver,
   track: Track,
-  _qualyTime: number, // Unused but kept for signature compatibility if needed, though we recalc for debug
+  _qualyTime: number, // Unused but kept for signature compatibility
   conditions: RaceConditions | null
 ): { lapTime: number; overtakeSuccess: boolean; analysis: LapAnalysis } => {
 
-  // 1. Re-calculate Base Time (Segment by Segment) for Debugging
-  let baseTime = 0;
   const segmentAnalysis: LapAnalysis['segments'] = [];
+  const overtakeAttempts: OvertakeAttempt[] = [];
 
-  track.segments.forEach(segmentType => {
-    const baseSegTime = BASE_SEGMENT_TIMES[segmentType];
-    const score = calculateSegmentScore(driver, segmentType);
+  // 1. Determine Initial Traffic State
+  let isStuck = false;
+  if (conditions) {
+    const isBehindSchedule = conditions.currentRank > conditions.expectedRank;
+    if (isBehindSchedule && conditions.gapToAhead < 3.0) {
+      isStuck = true;
+    }
+  }
+
+  const initialStuckState = isStuck;
+  let overtakeSuccess = false;
+  let rawLapTime = 0;
+
+  // 2. Iterate Segments
+  track.segments.forEach((currentSegment, idx) => {
+    // A. Base Calculation
+    const baseSegTime = BASE_SEGMENT_TIMES[currentSegment];
+    const score = calculateSegmentScore(driver, currentSegment);
     const safeScore = Math.max(score, 1);
     const ratio = track.difficulty / safeScore;
-    const resultTime = baseSegTime * Math.pow(ratio, 0.2);
+    let resultTime = baseSegTime * Math.pow(ratio, 0.2);
 
-    baseTime += resultTime;
+    // B. Overtake Logic (Look Ahead)
+    if (isStuck) {
+      const nextSegment = track.segments[(idx + 1) % track.segments.length];
+
+      let overtakeModifier = 1.0;
+      let modifierName = "Standard";
+
+      // Identify Transitions
+      if (currentSegment === SEGMENT_TYPES.LONG_STRAIGHT && nextSegment === SEGMENT_TYPES.LOW_SPEED_CORNER) {
+        overtakeModifier = 3.0;
+        modifierName = "Divebomb (3.0x)";
+      } else if (currentSegment === SEGMENT_TYPES.LONG_STRAIGHT && nextSegment === SEGMENT_TYPES.MEDIUM_SPEED_CORNER) {
+        overtakeModifier = 1.5;
+        modifierName = "Standard Pass (1.5x)";
+      } else if (currentSegment === SEGMENT_TYPES.SHORT_STRAIGHT && nextSegment === SEGMENT_TYPES.LOW_SPEED_CORNER) {
+        overtakeModifier = 0.5;
+        modifierName = "Dirty Air Zone (0.5x)";
+      } else {
+        modifierName = "Base (1.0x)";
+      }
+
+      // Roll for Overtake
+      const overtakingStat = getStat(driver, 'Overtaking');
+      const opponentInstincts = conditions?.carAheadInstincts || 50; // Fallback
+
+      const attackRoll = randomFloat(0.8, 1.2);
+      const defendRoll = randomFloat(0.8, 1.2);
+
+      const effectiveOvertake = overtakingStat * overtakeModifier;
+      const attackScore = effectiveOvertake * attackRoll;
+      const defendScore = opponentInstincts * defendRoll;
+
+      const success = attackScore > defendScore;
+
+      overtakeAttempts.push({
+        segmentIndex: idx,
+        segmentName: `${currentSegment} -> ${nextSegment}`,
+        modifier: modifierName,
+        result: success ? 'Success' : 'Failed',
+        rollDetails: `Att: ${attackScore.toFixed(1)} vs Def: ${defendScore.toFixed(1)}`
+      });
+
+      if (success) {
+        isStuck = false;
+        overtakeSuccess = true;
+        // Success means we ignore penalty for THIS segment too?
+        // Prompt: "Success: If Roll > 1.0 [sic], the driver passes (ignores Traffic Penalty for this segment)."
+        // We assume "Roll > 1.0" meant Success in general.
+      } else {
+        // Failed: Remain Stuck
+        isStuck = true;
+      }
+    }
+
+    // C. Apply Traffic Penalty
+    if (isStuck) {
+      resultTime *= 1.15; // 15% penalty per segment while stuck
+    }
+
+    rawLapTime += resultTime;
 
     segmentAnalysis.push({
-      type: segmentType,
+      type: currentSegment,
       base: baseSegTime,
       score: safeScore,
       result: resultTime
     });
   });
 
-  let lapTime = baseTime;
+  let lapTime = rawLapTime;
 
-  // 2. Apply Consistency Variance
+  // 3. Apply Consistency Variance
   const consistency = getStat(driver, 'Consistency');
   const effectiveChaos = getChaosWindow(consistency);
   const varianceMultiplier = 1 + randomFloat(-effectiveChaos, effectiveChaos);
@@ -115,65 +196,13 @@ export const simulateLap = (
   const varianceDelta = lapTime * (varianceMultiplier - 1);
   lapTime *= varianceMultiplier;
 
-  // 3. Overtaking Logic
-  let overtakeSuccess = false;
-  let isStuck = false;
-  let overtakeRoll = null;
-
-  if (conditions) {
-    const isBehindSchedule = conditions.currentRank > conditions.expectedRank;
-
-    if (isBehindSchedule && conditions.gapToAhead < 3.0 && conditions.gapToAhead > 0) {
-      const overtakingStat = getStat(driver, 'Overtaking');
-      const opponentInstincts = conditions.carAheadInstincts;
-
-      let successfulPass = false;
-
-      // Iterate segments to find straights
-      for (const segment of track.segments) {
-        if (successfulPass) break;
-
-        let weight = 0;
-        if (segment === SEGMENT_TYPES.LONG_STRAIGHT) weight = 2.0;
-        if (segment === SEGMENT_TYPES.MEDIUM_STRAIGHT) weight = 1.5;
-        if (segment === SEGMENT_TYPES.SHORT_STRAIGHT) weight = 1.0;
-
-        if (weight > 0) {
-          const attackRoll = randomFloat(0.8, 1.2);
-          const defendRoll = randomFloat(0.8, 1.2);
-          const attackScore = overtakingStat * weight * attackRoll;
-          const defendScore = opponentInstincts * defendRoll;
-
-          if (attackScore > defendScore) {
-            successfulPass = true;
-            overtakeRoll = `Success (Att: ${attackScore.toFixed(0)} vs Def: ${defendScore.toFixed(0)})`;
-          } else {
-             // Keep recording the last attempt?
-             overtakeRoll = `Failed (Att: ${attackScore.toFixed(0)} vs Def: ${defendScore.toFixed(0)})`;
-          }
-        }
-      }
-
-      if (successfulPass) {
-        overtakeSuccess = true;
-      } else {
-        isStuck = true;
-      }
-    }
-  }
-
-  // 4. Apply Dirty Air Penalty
-  if (isStuck) {
-    lapTime *= 1.15;
-  }
-
   const analysis: LapAnalysis = {
-    baseTime,
+    baseTime: rawLapTime, // This is the sum of segments (including traffic penalties before variance)
     segments: segmentAnalysis,
     modifiers: {
       instincts: getStat(driver, 'Instincts'),
-      traffic: isStuck,
-      overtake: overtakeRoll
+      traffic: initialStuckState, // Was the driver initially stuck?
+      overtakeAttempts
     },
     variance: varianceDelta,
     finalTime: lapTime

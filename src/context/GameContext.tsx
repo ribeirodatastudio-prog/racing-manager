@@ -12,6 +12,7 @@ interface RaceResult {
   teamName: string;
   totalTime: number;
   gapToLeader: number;
+  gapToAhead: number; // For UI and future calculations
   lapsCompleted: number;
   lastLapTime: number;
   rank: number;
@@ -169,6 +170,7 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
           teamName: grid.find(t => t.id === d.teamId)?.name || '',
           totalTime: 0,
           gapToLeader: 0,
+          gapToAhead: 0,
           lapsCompleted: 0,
           lastLapTime: 0,
           rank: qResults.findIndex(q => q.driverId === d.id) + 1, // Start rank based on qualy
@@ -263,11 +265,17 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
       const sortedResults = [...finishedResults].sort((a, b) => a.totalTime - b.totalTime);
 
       const leader = sortedResults[0];
-      const finalResults = sortedResults.map((r, idx) => ({
-         ...r,
-         rank: idx + 1,
-         gapToLeader: r.totalTime - leader.totalTime
-        }));
+      const finalResults = sortedResults.map((r, idx) => {
+         const carAhead = idx > 0 ? sortedResults[idx - 1] : null;
+         const gapToAhead = carAhead ? r.totalTime - carAhead.totalTime : 0;
+
+         return {
+            ...r,
+            rank: idx + 1,
+            gapToLeader: r.totalTime - leader.totalTime,
+            gapToAhead
+         };
+      });
 
       const allFinished = finalResults.every(r => r.status === 'Finished');
 

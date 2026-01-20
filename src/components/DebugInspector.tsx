@@ -74,10 +74,20 @@ export const DebugInspector = ({ driverId }: Props) => {
                 {analysis.modifiers.traffic ? "STUCK (+15%)" : "CLEAN AIR"}
               </span>
             </div>
-            {analysis.modifiers.overtake && (
+            {analysis.modifiers.overtakeAttempts && analysis.modifiers.overtakeAttempts.length > 0 && (
                 <div className="flex flex-col mt-2 p-2 bg-gray-900 border border-gray-700 rounded">
-                   <span className="text-gray-400 mb-1">Overtake Attempt:</span>
-                   <span className="text-cyan-300 font-bold">{analysis.modifiers.overtake}</span>
+                   <span className="text-gray-400 mb-1 border-b border-gray-600 pb-1">Overtake Attempts:</span>
+                   {analysis.modifiers.overtakeAttempts.map((attempt, idx) => (
+                      <div key={idx} className="mb-2 last:mb-0">
+                          <div className="flex justify-between text-xs">
+                             <span className="text-gray-300">Seg {attempt.segmentIndex} ({attempt.modifier})</span>
+                             <span className={attempt.result === 'Success' ? 'text-green-400 font-bold' : 'text-red-400'}>
+                                {attempt.result}
+                             </span>
+                          </div>
+                          <div className="text-[10px] text-gray-500">{attempt.rollDetails}</div>
+                      </div>
+                   ))}
                 </div>
             )}
          </div>
