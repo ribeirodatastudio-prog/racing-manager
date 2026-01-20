@@ -19,7 +19,6 @@ const track = generateTrack();
 // Team 1 (Rank 1) should have best stats. Team 20 (Rank 20) worst.
 // Let's grab Driver 1 from Team 1, and Driver 1 from Team 20.
 
-const team1 = grid.find(t => t.id.includes('team-1')); // generateGrid ids are likely predictable or just use index 0.
 // Actually generateGrid might not return sorted array?
 // Let's assume index 0 is best team, index 19 is worst.
 // Let's verify stats sum to be sure.

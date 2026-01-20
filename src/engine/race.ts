@@ -1,7 +1,7 @@
 import type { Driver } from './grid';
 import type { Track } from './track';
 import { BASE_SEGMENT_TIMES, SEGMENT_WEIGHTS, SEGMENT_TYPES, type SegmentType } from './data';
-import { randomFloat } from './mathUtils';
+import { randomFloat, getChaosWindow } from './mathUtils';
 
 // Helper to get stats safely
 const getStat = (driver: Driver, statName: string): number => {
@@ -109,8 +109,8 @@ export const simulateLap = (
 
   // 2. Apply Consistency Variance
   const consistency = getStat(driver, 'Consistency');
-  const variancePercent = 200 / (consistency + 50);
-  const varianceMultiplier = randomFloat(1 - variancePercent / 100, 1 + variancePercent / 100);
+  const effectiveChaos = getChaosWindow(consistency);
+  const varianceMultiplier = 1 + randomFloat(-effectiveChaos, effectiveChaos);
 
   const varianceDelta = lapTime * (varianceMultiplier - 1);
   lapTime *= varianceMultiplier;

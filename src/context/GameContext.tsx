@@ -64,7 +64,7 @@ interface GameContextType {
 
 const GameContext = createContext<GameContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'formula-idle-save-v1';
+const STORAGE_KEY = 'formula-idle-save-v2';
 
 export const GameProvider = ({ children }: { children: ReactNode }) => {
   // State
@@ -330,6 +330,9 @@ export const GameProvider = ({ children }: { children: ReactNode }) => {
              if (d.id !== driverId) return d;
 
              const currentVal = (d.stats as any)[statName];
+
+             if (statName === 'Consistency' && currentVal >= 100) return d;
+
              const cost = calculateStatCost(currentVal);
 
              if (points >= cost) {

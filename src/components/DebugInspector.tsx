@@ -1,5 +1,5 @@
 import { useGame } from '../context/GameContext';
-import { formatTime } from '../engine/mathUtils';
+import { formatTime, getChaosWindow } from '../engine/mathUtils';
 
 interface Props {
   driverId: string | null;
@@ -19,10 +19,26 @@ export const DebugInspector = ({ driverId }: Props) => {
   const analysis = debugData[driverId];
   const driver = grid.flatMap(t => t.drivers).find(d => d.id === driverId);
 
+  if (!driver) return null;
+
+  const consistency = (driver.stats as any).Consistency || 0;
+  const chaosWindow = getChaosWindow(consistency);
+  const chaosPercent = chaosWindow * 100;
+
+  let chaosLabel = "Precise";
+  if (chaosPercent > 20) chaosLabel = "Dangerous";
+  else if (chaosPercent > 10) chaosLabel = "Erratic";
+  else if (chaosPercent > 5) chaosLabel = "Unstable";
+  else if (chaosPercent > 2) chaosLabel = "Stable";
+
   if (!analysis) {
      return (
        <div className="p-4 text-gray-500 font-mono">
-         <h3 className="text-xl text-white mb-2 border-b border-gray-700 pb-1">{driver?.name}</h3>
+         <h3 className="text-xl text-white mb-2 border-b border-gray-700 pb-1">{driver.name}</h3>
+         <div className="mb-4">
+             <div className="text-gray-400">Chaos Window:</div>
+             <div className="text-orange-300">±{chaosPercent.toFixed(1)}% ({chaosLabel})</div>
+         </div>
          <div>No telemetry data available yet.</div>
          <div className="text-xs mt-2">Simulate a lap to generate data.</div>
        </div>
@@ -32,13 +48,14 @@ export const DebugInspector = ({ driverId }: Props) => {
   return (
     <div className="flex flex-col h-full bg-gray-950 text-green-400 p-4 font-mono text-xs overflow-auto border-l border-gray-800 w-full">
        <h3 className="text-xl text-white mb-4 border-b border-green-800 pb-1 uppercase tracking-wider">
-         Telemetry: <span className="text-cyan-400">{driver?.name}</span>
+         Telemetry: <span className="text-cyan-400">{driver.name}</span>
        </h3>
 
        <div className="mb-6 bg-gray-900 p-3 rounded border border-gray-800">
          <h4 className="text-white font-bold mb-2 border-b border-gray-700 pb-1">LAP SUMMARY</h4>
          <div className="grid grid-cols-2 gap-y-1">
            <div className="text-gray-400">Raw Pace:</div><div className="text-right text-green-300">{formatTime(analysis.baseTime)}</div>
+           <div className="text-gray-400">Chaos Window:</div><div className="text-right text-orange-300">±{chaosPercent.toFixed(1)}% ({chaosLabel})</div>
            <div className="text-gray-400">Variance:</div><div className="text-right text-blue-300">{analysis.variance > 0 ? "+" : ""}{analysis.variance.toFixed(3)}s</div>
            <div className="text-gray-100 font-bold border-t border-gray-700 mt-1 pt-1">FINAL TIME:</div><div className="text-right text-yellow-400 font-bold border-t border-gray-700 mt-1 pt-1 text-lg">{formatTime(analysis.finalTime)}</div>
          </div>

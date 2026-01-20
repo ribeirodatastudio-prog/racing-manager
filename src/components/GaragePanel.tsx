@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useGame } from '../context/GameContext';
 import { STAT_NAMES } from '../engine/data';
-import { calculateStatCost } from '../engine/mathUtils';
+import { calculateStatCost, getStability } from '../engine/mathUtils';
 import { User, Activity } from 'lucide-react';
 import { ResponsiveContainer, RadarChart, PolarGrid, PolarAngleAxis, Radar } from 'recharts';
 
@@ -60,25 +60,47 @@ const GaragePanel = () => {
         {STAT_NAMES.map(stat => {
           // @ts-ignore
           const val = currentDriver.stats[stat];
+
+          let displayLevel = `Lvl ${val}`;
+          let stabilityInfo = null;
+          let isMaxed = false;
+
+          if (stat === 'Consistency') {
+             displayLevel = `Lvl ${val}/100`;
+             if (val >= 100) isMaxed = true;
+
+             const stability = getStability(val);
+             stabilityInfo = (
+                <span className="text-[10px] text-blue-400 block mt-0.5">
+                   Stability: {(stability * 100).toFixed(1)}%
+                </span>
+             );
+          }
+
           const cost = calculateStatCost(val);
-          const canAfford = economy.points >= cost;
+          const canAfford = !isMaxed && economy.points >= cost;
 
           return (
             <div key={stat} className="bg-slate-950 p-3 rounded border border-slate-800 flex items-center justify-between group hover:border-slate-700 transition-colors">
               <div className="flex flex-col">
                 <span className="text-sm font-bold text-slate-300">{stat}</span>
-                <span className="text-xs text-slate-500">Lvl {val}</span>
+                <span className="text-xs text-slate-500">{displayLevel}</span>
+                {stabilityInfo}
               </div>
 
               <div className="flex items-center gap-4">
-                 <div className="text-right">
-                    <div className={`text-xs font-mono ${canAfford ? 'text-emerald-400' : 'text-rose-900'}`}>
-                       {Math.round(cost).toLocaleString()} PTS
-                    </div>
-                    <div className="text-[10px] text-slate-600">
-                       Next: {val + 1}
-                    </div>
-                 </div>
+                 {!isMaxed ? (
+                     <div className="text-right">
+                        <div className={`text-xs font-mono ${canAfford ? 'text-emerald-400' : 'text-rose-900'}`}>
+                           {Math.round(cost).toLocaleString()} PTS
+                        </div>
+                        <div className="text-[10px] text-slate-600">
+                           Next: {val + 1}
+                        </div>
+                     </div>
+                 ) : (
+                     <div className="text-right text-xs text-slate-500 font-mono">MAX</div>
+                 )}
 
                  <button
                    onClick={() => actions.upgradeStat(currentDriver.id, stat)}

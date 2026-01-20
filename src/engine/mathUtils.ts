@@ -18,6 +18,19 @@ export const calculateStatCost = (currentLevel: number) => {
   return ECONOMY.BASE_COST * Math.pow(ECONOMY.COST_EXPONENT, currentLevel);
 };
 
+export const getStability = (consistency: number): number => {
+  // StabilityFactor = Min(Driver.Consistency, 100) / 100 * 0.95
+  return Math.min(consistency, 100) / 100 * 0.95;
+};
+
+export const getChaosWindow = (consistency: number): number => {
+  // Base Chaos: 0.35 (35%)
+  // EffectiveChaos = BaseChaos * (1 - StabilityFactor)
+  const baseChaos = 0.35;
+  const stability = getStability(consistency);
+  return baseChaos * (1 - stability);
+};
+
 /**
  * Calculates the total stat budget for a team based on its rank.
  * @param rank 1-based rank (1 to TotalTeams)

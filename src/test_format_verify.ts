@@ -24,7 +24,7 @@ testCases.forEach(({ input, expected }) => {
 });
 
 if (failed) {
-    process.exit(1);
+    throw new Error("Format verification failed");
 } else {
     console.log("All formatTime tests passed.");
 }
