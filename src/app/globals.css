@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+:root {
+  /* Zinc 950 */
+  --background: #09090b;
+  /* Zinc 50 */
+  --foreground: #fafafa;
+
+  /* Zinc 900 */
+  --card: #18181b;
+  --card-foreground: #fafafa;
+
+  /* Zinc 800 */
+  --popover: #27272a;
+  --popover-foreground: #fafafa;
+
+  /* Zinc 50 */
+  --primary: #fafafa;
+  /* Zinc 900 */
+  --primary-foreground: #18181b;
+
+  /* Zinc 800 */
+  --secondary: #27272a;
+  --secondary-foreground: #fafafa;
+
+  /* Zinc 800 */
+  --muted: #27272a;
+  /* Zinc 400 */
+  --muted-foreground: #a1a1aa;
+
+  /* Zinc 800 */
+  --accent: #27272a;
+  --accent-foreground: #fafafa;
+
+  /* Red 500 */
+  --destructive: #ef4444;
+  --destructive-foreground: #fafafa;
+
+  /* Zinc 800 */
+  --border: #27272a;
+  --input: #27272a;
+  --ring: #d4d4d8;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* Enforce square borders as requested */
+* {
+  border-radius: 0 !important;
+}
