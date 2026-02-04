@@ -2,8 +2,10 @@ import { Player } from "@/types";
 import { TacticsManager, TeamSide } from "./TacticsManager";
 import { GameMap } from "./GameMap";
 import { Pathfinder } from "./Pathfinder";
-import { ECONOMY } from "./constants";
+import { ECONOMY, WEAPONS } from "./constants";
 import { Bomb, BombStatus } from "./Bomb";
+import { WeaponManager } from "./WeaponManager";
+import { Weapon } from "@/types/Weapon";
 
 export type BotStatus = "ALIVE" | "DEAD";
 
@@ -24,22 +26,44 @@ export class Bot {
   public id: string;
   public player: Player;
   public side: TeamSide;
-  public hp: number;
   public status: BotStatus;
   public currentZoneId: string;
   public path: string[];
   public hasBomb: boolean = false;
+
+  // Movement State
+  public movementProgress: number = 0;
+  public targetZoneId: string | null = null;
+  public recoilBulletIndex: number = 0;
 
   // AI State
   public aiState: BotAIState = BotAIState.DEFAULT;
   public goalZoneId: string | null = null;
   public reactionTimer: number = 0; // Ticks to wait before acting on new goal
 
+  get hp(): number {
+    return this.player.health ?? 100;
+  }
+  set hp(value: number) {
+    this.player.health = value;
+  }
+
+  get hasHelmet(): boolean {
+    return this.player.hasHelmet ?? (this.player.inventory?.hasHelmet ?? false);
+  }
+
+  get hasVest(): boolean {
+    return this.player.hasVest ?? (this.player.inventory?.hasKevlar ?? false);
+  }
+
   constructor(player: Player, side: TeamSide, startZoneId: string) {
     this.id = player.id;
     this.player = player;
     this.side = side;
-    this.hp = 100;
+
+    // Initialize Health/Armor state
+    if (this.player.health === undefined) this.player.health = 100;
+
     this.status = "ALIVE";
     this.currentZoneId = startZoneId;
     this.path = [];
@@ -54,6 +78,29 @@ export class Bot {
         utilities: []
       };
     }
+  }
+
+  getEquippedWeapon(): Weapon | undefined {
+    // Check primary first
+    if (this.player.inventory?.primaryWeapon) {
+      const weaponId = this.player.inventory.primaryWeapon;
+      const weaponConst = WEAPONS[weaponId];
+      if (weaponConst) {
+        return WeaponManager.getWeapon(weaponConst.name);
+      }
+    }
+
+    // Check secondary
+    if (this.player.inventory?.secondaryWeapon) {
+      const weaponId = this.player.inventory.secondaryWeapon;
+      const weaponConst = WEAPONS[weaponId];
+      if (weaponConst) {
+        return WeaponManager.getWeapon(weaponConst.name);
+      }
+    }
+
+    // Default or Knife? (JSON doesn't have Knife yet, return undefined or handle elsewhere)
+    return undefined;
   }
 
   /**
@@ -215,6 +262,11 @@ export class Bot {
     const moveChance = 0.1 + (this.player.skills.mental.aggression / 200) * 0.8;
     // Boost move chance if SAVING or DEFUSING (Urgent)
     const isUrgent = this.aiState === BotAIState.SAVING || this.aiState === BotAIState.DEFUSING;
+
+    // Granular Movement: If already moving (targetZoneId set), continue moving (handled in Simulator)
+    if (this.targetZoneId) {
+      return { type: "MOVE", targetZoneId: this.targetZoneId };
+    }
 
     if ((isUrgent || Math.random() < moveChance) && this.path.length > 0) {
       return { type: "MOVE", targetZoneId: this.path[0] };

@@ -1,5 +1,7 @@
 import { Bot } from "./Bot";
 import { TechnicalSkills, MentalSkills, PhysicalSkills } from "@/types";
+import { WeaponManager } from "./WeaponManager";
+import { determineHitGroup, calculateDamage, HitGroup } from "./DamageUtils";
 
 export interface DuelResult {
   winnerId: string;
@@ -9,6 +11,7 @@ export interface DuelResult {
   timeTaken: number; // in ms
   wasHeadshot: boolean;
   log: string[]; // For debugging/explanation
+  publicLog: string[]; // User-facing events
 }
 
 interface CombatSimulationResult {
@@ -16,7 +19,9 @@ interface CombatSimulationResult {
   timeToKill: number;
   bulletsFired: number;
   isHeadshot: boolean;
+  damageDealt: number;
   log: string[];
+  publicLog: string[];
 }
 
 export class DuelEngine {
@@ -43,69 +48,67 @@ export class DuelEngine {
 
   /**
    * Calculates the outcome of a duel between an initiator (Attacker) and a target (Defender).
-   * Both sides simulate their shooting sequence simultaneously. The one with the lower Time To Kill (TTK) wins.
-   *
-   * @param initiator The bot initiating the duel (peeking/entering).
-   * @param target The bot defending/holding.
    */
-  public static calculateOutcome(initiator: Bot, target: Bot): DuelResult {
-    const initiatorResult = this.simulateEngagement(initiator, target, true);
-    const targetResult = this.simulateEngagement(target, initiator, false);
+  public static calculateOutcome(initiator: Bot, target: Bot, distance: number): DuelResult {
+    const initiatorResult = this.simulateEngagement(initiator, target, distance, true);
+    const targetResult = this.simulateEngagement(target, initiator, distance, false);
 
-    // Determine Winner
+    // Determine Winner (Who hits first)
     let winnerId: string;
     let loserId: string;
     let finalResult: CombatSimulationResult;
+    let damageToLoser: number;
 
-    // Logic: Fastest kill wins.
+    // Logic: Fastest hit wins the exchange.
     if (initiatorResult.success && targetResult.success) {
       if (initiatorResult.timeToKill < targetResult.timeToKill) {
         winnerId = initiator.id;
         loserId = target.id;
         finalResult = initiatorResult;
+        damageToLoser = initiatorResult.damageDealt;
       } else {
         winnerId = target.id;
         loserId = initiator.id;
         finalResult = targetResult;
+        damageToLoser = targetResult.damageDealt;
       }
     } else if (initiatorResult.success) {
       winnerId = initiator.id;
       loserId = target.id;
       finalResult = initiatorResult;
+      damageToLoser = initiatorResult.damageDealt;
     } else if (targetResult.success) {
       winnerId = target.id;
       loserId = initiator.id;
       finalResult = targetResult;
+      damageToLoser = targetResult.damageDealt;
     } else {
-      // Both missed. Default to target (defender advantage)
+      // Both missed. Default to target (defender advantage) but 0 damage.
       winnerId = target.id;
       loserId = initiator.id;
       finalResult = targetResult;
-      finalResult.log.push("Both missed. Defaulting to defender win.");
+      damageToLoser = 0;
+      finalResult.log.push("Both missed. No damage dealt.");
     }
 
     return {
       winnerId: winnerId,
       loserId: loserId,
-      damage: 100, // Fatal damage for now
+      damage: damageToLoser,
       bulletsFired: finalResult.bulletsFired,
       timeTaken: finalResult.timeToKill,
       wasHeadshot: finalResult.isHeadshot,
-      log: [...initiatorResult.log, ...targetResult.log]
+      log: [...initiatorResult.log, ...targetResult.log],
+      publicLog: [...initiatorResult.publicLog, ...targetResult.publicLog]
     };
   }
 
-  /**
-   * Runs the duel simulation multiple times to determine the statistical win probability.
-   * Useful for "Expected Kills" analysis.
-   */
-  public static getWinProbability(initiator: Bot, target: Bot, iterations: number = 50): { initiatorWinRate: number, targetWinRate: number } {
+  public static getWinProbability(initiator: Bot, target: Bot, distance: number, iterations: number = 50): { initiatorWinRate: number, targetWinRate: number } {
     let initiatorWins = 0;
 
     for (let i = 0; i < iterations; i++) {
-      // We assume initiator is always the one passed as first arg for consistency in the loop
-      const result = this.calculateOutcome(initiator, target);
-      if (result.winnerId === initiator.id) {
+      const result = this.calculateOutcome(initiator, target, distance);
+      if (result.winnerId === initiator.id && result.damage > 0) {
         initiatorWins++;
       }
     }
@@ -117,133 +120,127 @@ export class DuelEngine {
     };
   }
 
-  /**
-   * Simulates the shooting sequence for one shooter against a target.
-   * @param shooter The bot shooting.
-   * @param target The bot being shot at.
-   * @param isInitiator Whether the shooter is the one initiating (Entrying).
-   */
-  private static simulateEngagement(shooter: Bot, target: Bot, isInitiator: boolean): CombatSimulationResult {
+  private static simulateEngagement(shooter: Bot, target: Bot, distance: number, isInitiator: boolean): CombatSimulationResult {
     const log: string[] = [];
+    const publicLog: string[] = [];
     const tech = shooter.player.skills.technical;
     const mental = shooter.player.skills.mental;
     const physical = shooter.player.skills.physical;
     const targetMental = target.player.skills.mental;
 
-    log.push(`Simulating ${shooter.player.name} vs ${target.player.name} (Is Initiator: ${isInitiator})`);
+    const weapon = shooter.getEquippedWeapon();
+    if (!weapon) {
+         log.push(`${shooter.player.name} has no weapon! Miss.`);
+         return { success: false, timeToKill: Infinity, bulletsFired: 0, isHeadshot: false, damageDealt: 0, log, publicLog };
+    }
 
-    // 1. Difficulty Calculation
-    // BaseDifficulty (100) - Attacker crosshairPlacement + Defender positioning.
-    let difficulty = this.BASE_DIFFICULTY - tech.crosshairPlacement + targetMental.positioning;
+    log.push(`Simulating ${shooter.player.name} vs ${target.player.name} (Dist: ${distance.toFixed(1)}) with ${weapon.name}`);
 
-    log.push(`Difficulty: ${difficulty} (100 - ${tech.crosshairPlacement} + ${targetMental.positioning})`);
+    // Difficulty Calculation
+    const difficulty = this.BASE_DIFFICULTY - tech.crosshairPlacement + targetMental.positioning;
+    // log.push(`Difficulty: ${difficulty}`);
 
-    // 2. The Time Factor
-    // Calculate timeToHit. High reactionTime reduces this.
-    // Formula: Base - reactionTime.
+    // Time Factor
     let timeToHit = this.BASE_TIME_TO_HIT - physical.reactionTime;
-
-    // Entry Fragging Adjustments
     const isEntryFragging = isInitiator && mental.aggression > this.ENTRY_FRAG_AGGRESSION_THRESHOLD;
-    let accuracyMultiplier = 1.0;
 
     if (isEntryFragging) {
       timeToHit -= this.ENTRY_FRAG_TIME_REDUCTION;
-      log.push(`Entry Fragging: timeToHit reduced by ${this.ENTRY_FRAG_TIME_REDUCTION}`);
-
-      // Accuracy penalty unless movement is high
-      if (tech.movement <= this.MOVEMENT_THRESHOLD_FOR_ACCURACY) {
-        accuracyMultiplier = this.ENTRY_FRAG_ACCURACY_PENALTY;
-        log.push(`Entry Fragging: Movement ${tech.movement} <= ${this.MOVEMENT_THRESHOLD_FOR_ACCURACY}. Accuracy penalty applied.`);
-      } else {
-        log.push(`Entry Fragging: Movement ${tech.movement} > ${this.MOVEMENT_THRESHOLD_FOR_ACCURACY}. No accuracy penalty.`);
-      }
+      // log.push(`Entry Fragging bonus applied.`);
     }
 
-    // Ensure timeToHit is positive
     timeToHit = Math.max(50, timeToHit);
-
-    // Add random jitter to timeToHit to represent human inconsistency (+/- 15ms)
     const jitter = (Math.random() * 30) - 15;
     timeToHit += jitter;
+    // log.push(`Base TimeToHit: ${timeToHit.toFixed(2)}ms`);
 
-    log.push(`Final timeToHit: ${timeToHit.toFixed(2)}ms (incl. ${jitter.toFixed(2)}ms jitter)`);
+    // Inaccuracy Setup
+    const baseChance = tech.firstBulletPrecision / 200;
+    let standingInaccuracy = weapon.standingInaccuracy;
 
-    // Mental Overlays
-    // pressureFactor = composure / 200.
-    const pressureFactor = mental.composure / 200;
-    log.push(`Pressure Factor: ${pressureFactor.toFixed(2)} (Composure ${mental.composure})`);
-
-    // 3. The Shooting Sequence
-
-    // Check 1: The Tap
-    // Use firstBulletPrecision. If Success > Difficulty, the duel ends (Kill).
-    // Logic: Calculate an effective precision score based on skill, pressure, and RNG.
-    // Applying accuracyMultiplier here.
-    const effectivePrecision = tech.firstBulletPrecision * accuracyMultiplier * pressureFactor;
-
-    // "Success" calculation. We add randomness to allow for variation.
-    // Let's say Success = EffectivePrecision + Random(-20% to +20% of Skill) ?
-    // Or just a flat random roll 0-200 added?
-    // Requirement: "If Success > Difficulty".
-    // Let's define Success as: EffectivePrecision + (Math.random() * 100).
-    // This gives a variance.
-    const variance = Math.random() * 50; // 0-50 random bonus
-    const tapSuccessScore = effectivePrecision + variance;
-
-    log.push(`Tap Check: Score ${tapSuccessScore.toFixed(2)} (EffPrec ${effectivePrecision.toFixed(2)} + Rnd ${variance.toFixed(2)}) vs Difficulty ${difficulty}`);
-
-    if (tapSuccessScore > difficulty) {
-      log.push("Tap Hit! (Headshot)");
-      return {
-        success: true,
-        timeToKill: timeToHit,
-        bulletsFired: 1,
-        isHeadshot: true,
-        log
-      };
+    // Range Penalty
+    if (distance > weapon.accurateRange) {
+        standingInaccuracy *= 2;
+        log.push(`Range Penalty: Inaccuracy doubled to ${standingInaccuracy.toFixed(2)} (Dist ${distance.toFixed(1)} > ${weapon.accurateRange})`);
     }
 
-    log.push("Tap Missed. Starting Spray.");
+    // Tap Check
+    // Formula: Final_Success = (Base_Chance * (1 - Inaccuracy/100)) - (Diff / 500)
+    const weaponPenalty = standingInaccuracy / 100;
+    let successProb = (baseChance * (1 - weaponPenalty)) - (difficulty / 500);
 
-    // Check 2: The Spray
-    // Loop for x "bullets". x is calculated from composure.
-    // Formula: 5 + (200 - composure) / 10.
-    // Example: Composure 100 -> 5 + 10 = 15 bullets.
-    const sprayBullets = Math.floor(5 + (200 - mental.composure) / 10);
+    // Clamp
+    successProb = Math.max(0.01, Math.min(0.99, successProb));
+
+    log.push(`Tap Prob: ${(successProb * 100).toFixed(1)}%`);
+
+    if (Math.random() < successProb) {
+        // HIT
+        const hitGroup = determineHitGroup(shooter);
+        const dmgResult = calculateDamage(weapon, hitGroup, target);
+
+        const hitMsg = `${shooter.player.name} hit ${target.player.name} in ${hitGroup} with ${weapon.name} for ${dmgResult.damage} damage (Armor reduced: ${dmgResult.armorReduced ? "Yes" : "No"}).`;
+        log.push(hitMsg);
+        publicLog.push(hitMsg);
+
+        return {
+            success: true,
+            timeToKill: timeToHit,
+            bulletsFired: 1,
+            isHeadshot: hitGroup === "HEAD",
+            damageDealt: dmgResult.damage,
+            log,
+            publicLog
+        };
+    }
+
+    log.push("Tap Missed. Spraying...");
+
+    // Spray Loop
+    const sprayBullets = Math.max(3, Math.floor(5 + (200 - mental.composure) / 10)); // Min 3 bullets
+    const rpmDelay = (60 / weapon.rpm) * 1000;
 
     for (let i = 1; i <= sprayBullets; i++) {
-      // Each bullet uses sprayControl vs rising recoilPenalty.
-      const bulletRecoil = i * this.SPRAY_CONTROL_RECOIL_INCREMENT;
+        const currentTime = timeToHit + (i * rpmDelay);
 
-      // Calculate Spray Score
-      const effectiveSprayControl = tech.sprayControl * pressureFactor;
-      const sprayScore = effectiveSprayControl - bulletRecoil + (Math.random() * 50); // Add some variance
+        // Recoil Logic: Inaccuracy replaced by RecoilAmount * index
+        const effectiveRecoil = weapon.recoilAmount * i;
+        const sprayPenalty = effectiveRecoil / 100;
 
-      // Compare vs Difficulty
-      // We use the same Difficulty? Usually spraying is less accurate, but we have recoil penalty subtracting.
-      // So checking vs same Difficulty works.
+        // Recalculate Probability
+        // Note: keeping difficulty constant.
+        let sprayProb = (baseChance * (1 - sprayPenalty)) - (difficulty / 500);
+        sprayProb = Math.max(0.01, Math.min(0.99, sprayProb));
 
-      if (sprayScore > difficulty) {
-        const timeTaken = timeToHit + (i * this.TIME_PER_BULLET);
-        log.push(`Spray Hit on bullet ${i + 1}! Score ${sprayScore.toFixed(2)} vs Diff ${difficulty}`);
-        return {
-          success: true,
-          timeToKill: timeTaken,
-          bulletsFired: 1 + i, // Tap + Spray bullets
-          isHeadshot: false,
-          log
-        };
-      }
+        if (Math.random() < sprayProb) {
+            const hitGroup = determineHitGroup(shooter);
+            const dmgResult = calculateDamage(weapon, hitGroup, target);
+
+            const hitMsg = `${shooter.player.name} hit ${target.player.name} in ${hitGroup} with ${weapon.name} for ${dmgResult.damage} damage (Armor reduced: ${dmgResult.armorReduced ? "Yes" : "No"}).`;
+            log.push(hitMsg);
+            publicLog.push(hitMsg);
+
+            return {
+                success: true,
+                timeToKill: currentTime,
+                bulletsFired: 1 + i,
+                isHeadshot: hitGroup === "HEAD",
+                damageDealt: dmgResult.damage,
+                log,
+                publicLog
+            };
+        }
     }
 
-    log.push(`Spray Finished (Missed all ${sprayBullets} bullets).`);
+    log.push("Spray Missed.");
     return {
-      success: false,
-      timeToKill: Infinity,
-      bulletsFired: 1 + sprayBullets,
-      isHeadshot: false,
-      log
+        success: false,
+        timeToKill: Infinity,
+        bulletsFired: 1 + sprayBullets,
+        isHeadshot: false,
+        damageDealt: 0,
+        log,
+        publicLog
     };
   }
 }

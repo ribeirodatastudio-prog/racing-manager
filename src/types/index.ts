@@ -51,6 +51,10 @@ export interface Player {
     mental: MentalSkills;
     physical: PhysicalSkills;
   };
+  // Runtime State (Optional for mocks, required for simulation)
+  health?: number;
+  hasHelmet?: boolean;
+  hasVest?: boolean;
   inventory?: PlayerInventory;
 }
 

@@ -1,0 +1,50 @@
+[
+  {
+    "name": "AK-47",
+    "price": 2700,
+    "killAward": 300,
+    "damage": 36,
+    "armorPen": 0.775,
+    "hsMultiplier": 4.0,
+    "rpm": 600,
+    "accurateRange": 21.74,
+    "standingInaccuracy": 7.01,
+    "recoilAmount": 2.0,
+    "recoveryTime": 0.4,
+    "mobility": 215,
+    "magazineSize": 30,
+    "reloadTime": 2.4
+  },
+  {
+    "name": "M4A1-S",
+    "price": 2900,
+    "killAward": 300,
+    "damage": 33,
+    "armorPen": 0.70,
+    "hsMultiplier": 4.0,
+    "rpm": 600,
+    "accurateRange": 28.22,
+    "standingInaccuracy": 5.40,
+    "recoilAmount": 1.5,
+    "recoveryTime": 0.35,
+    "mobility": 225,
+    "magazineSize": 20,
+    "reloadTime": 3.1
+  },
+  {
+    "name": "Desert Eagle",
+    "price": 700,
+    "killAward": 300,
+    "damage": 53,
+    "armorPen": 0.932,
+    "hsMultiplier": 4.0,
+    "rpm": 267,
+    "accurateRange": 24.58,
+    "standingInaccuracy": 6.20,
+    "recoilAmount": 15.0,
+    "recoveryTime": 2.0,
+    "mobility": 230,
+    "magazineSize": 7,
+    "reloadTime": 2.2
+  }
+]

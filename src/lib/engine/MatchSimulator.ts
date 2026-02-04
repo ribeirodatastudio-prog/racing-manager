@@ -245,11 +245,51 @@ export class MatchSimulator {
       const action = bot.decideAction(this.map);
 
       if (action.type === "MOVE" && action.targetZoneId) {
-        bot.currentZoneId = action.targetZoneId;
-        if (bot.path.length > 0 && bot.path[0] === action.targetZoneId) {
-          bot.path.shift();
+        // Initialize movement if new target
+        if (bot.targetZoneId !== action.targetZoneId) {
+           bot.targetZoneId = action.targetZoneId;
+           bot.movementProgress = 0;
         }
-      } else if (action.type === "PLANT") {
+
+        const distance = this.map.getDistance(bot.currentZoneId, bot.targetZoneId!);
+
+        // Handle instant move (fallback) or granular move
+        if (distance === Infinity || distance <= 0) {
+           bot.currentZoneId = bot.targetZoneId!;
+           bot.targetZoneId = null;
+           bot.movementProgress = 0;
+           if (bot.path.length > 0 && bot.path[0] === action.targetZoneId) {
+             bot.path.shift();
+           }
+        } else {
+           // Calculate Speed
+           const weapon = bot.getEquippedWeapon();
+           const mobility = weapon ? weapon.mobility : 250;
+           const baseSpeed = 40; // Map units per second
+           const effectiveSpeed = baseSpeed * (mobility / 250);
+
+           // Move amount per tick (0.5s)
+           const moveAmount = effectiveSpeed * 0.5;
+
+           bot.movementProgress += moveAmount;
+
+           if (bot.movementProgress >= distance) {
+               // Arrived
+               bot.currentZoneId = bot.targetZoneId!;
+               bot.targetZoneId = null;
+               bot.movementProgress = 0;
+               if (bot.path.length > 0 && bot.path[0] === action.targetZoneId) {
+                  bot.path.shift();
+               }
+           }
+        }
+
+      } else {
+        // Not moving, reset state
+        bot.targetZoneId = null;
+        bot.movementProgress = 0;
+
+        if (action.type === "PLANT") {
           // Attempt start planting
           if (this.bomb.status === BombStatus.IDLE) {
               this.bomb.startPlanting(bot.id, bot.currentZoneId);
@@ -334,10 +374,10 @@ export class MatchSimulator {
                target.aiState = BotAIState.DEFAULT;
            }
 
-           const probs = DuelEngine.getWinProbability(attacker, target, 20);
+           const probs = DuelEngine.getWinProbability(attacker, target, 100, 20);
            this.stats[attacker.id].expectedKills += probs.initiatorWinRate;
 
-           const result = DuelEngine.calculateOutcome(attacker, target);
+           const result = DuelEngine.calculateOutcome(attacker, target, 100);
            const winner = result.winnerId === attacker.id ? attacker : target;
            const loser = result.winnerId === attacker.id ? target : attacker;
 
@@ -345,6 +385,14 @@ export class MatchSimulator {
            this.stats[winner.id].damageDealt += result.damage;
 
            this.events.unshift(`[Tick ${this.tickCount}] ⚔️ ${attacker.player.name} vs ${target.player.name} in ${zone?.name}`);
+           // Add public combat logs (Hit details)
+           if (result.publicLog && result.publicLog.length > 0) {
+              // Add to events in reverse order so latest is top? Or just unshift.
+              // result.publicLog has hits.
+              // We unshift so latest event is at index 0.
+              // If we have multiple logs, we should unshift them.
+              result.publicLog.forEach(log => this.events.unshift(`> ${log}`));
+           }
 
            if (loser.hp <= 0) {
                this.events.unshift(`💀 ${loser.player.name} eliminated by ${winner.player.name}`);

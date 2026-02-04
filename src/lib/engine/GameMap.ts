@@ -33,4 +33,15 @@ export class GameMap {
     const spawnId = side === "CT" ? this.data.spawnPoints.CT : this.data.spawnPoints.T;
     return this.getZone(spawnId);
   }
+
+  getDistance(zoneId1: string, zoneId2: string): number {
+    const z1 = this.getZone(zoneId1);
+    const z2 = this.getZone(zoneId2);
+
+    if (!z1 || !z2) return Infinity;
+
+    const dx = z1.x - z2.x;
+    const dy = z1.y - z2.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
 }
