@@ -7,7 +7,7 @@ interface PracticeSidebarProps {
   teamCT: Player[];
   selectedPlayerId: string | null;
   onSelectPlayer: (id: string | null) => void;
-  overrides: Record<string, any>;
+  overrides: Record<string, Record<string, number>>;
   onUpdateOverride: (playerId: string, stat: string, value: number) => void;
   tacticT: Tactic;
   tacticCT: Tactic;
