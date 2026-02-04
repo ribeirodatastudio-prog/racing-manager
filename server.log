@@ -1,36 +1,10 @@
 
-> temp-app@0.1.0 dev
-> next dev
+> temp-app@0.1.0 start
+> next start
 
    ▲ Next.js 15.1.6
    - Local:        http://localhost:3000
    - Network:      http://192.168.0.2:3000
 
  ✓ Starting...
-Attention: Next.js now collects completely anonymous telemetry regarding usage.
-This information is used to shape Next.js' roadmap and prioritize features.
-You can learn more, including how to opt-out if you'd not like to participate in this anonymous program, by visiting the following URL:
-https://nextjs.org/telemetry
-
-
-   We detected TypeScript in your project and reconfigured your tsconfig.json file for you.
-   The following mandatory changes were made to your tsconfig.json:
-
-	- jsx was set to preserve (next.js implements its own optimized jsx transform)
-
- ✓ Ready in 1887ms
- ○ Compiling /simulation ...
- ✓ Compiled /simulation in 7.2s (658 modules)
- GET /simulation 200 in 8886ms
- ✓ Compiled in 485ms (311 modules)
- ✓ Compiled in 378ms (640 modules)
- ✓ Compiled in 362ms (640 modules)
- ✓ Compiled in 276ms (640 modules)
- ✓ Compiled in 720ms (640 modules)
- ✓ Compiled in 253ms (640 modules)
- ✓ Compiled in 522ms (640 modules)
- ✓ Compiled in 166ms (311 modules)
- ✓ Compiled in 223ms (311 modules)
- ✓ Compiled in 325ms (640 modules)
- ✓ Compiled in 104ms (311 modules)
- ✓ Compiled in 105ms (311 modules)
+ ✓ Ready in 625ms

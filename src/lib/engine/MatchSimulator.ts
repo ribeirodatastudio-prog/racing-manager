@@ -1,10 +1,10 @@
 import { Bot, BotAIState } from "./Bot";
 import { GameMap } from "./GameMap";
-import { TacticsManager, TeamSide } from "./TacticsManager";
+import { TacticsManager, TeamSide, Tactic } from "./TacticsManager";
 import { DuelEngine, DuelResult } from "./DuelEngine";
 import { Player } from "@/types";
 import { DUST2_MAP } from "./maps/dust2";
-import { MatchState, MatchPhase, RoundEndReason, RoundHistory } from "./types";
+import { MatchState, MatchPhase, RoundEndReason, RoundHistory, BuyStrategy } from "./types";
 import { EconomySystem } from "./EconomySystem";
 import { BuyLogic } from "./BuyLogic";
 import { ECONOMY } from "./constants";
@@ -147,7 +147,7 @@ export class MatchSimulator {
             b.player.inventory.hasKit = false;
             b.player.inventory.utilities = [];
             b.player.inventory.primaryWeapon = undefined;
-            b.player.inventory.secondaryWeapon = undefined;
+            b.player.inventory.secondaryWeapon = b.side === TeamSide.T ? "glock-18" : "usp-s";
         }
     });
 
@@ -159,7 +159,7 @@ export class MatchSimulator {
     // Reset Map Objects
     this.bomb.reset();
     this.roundTimer = this.ROUND_TIME;
-    this.matchState.phase = MatchPhase.FREEZETIME;
+    this.matchState.phase = MatchPhase.PAUSED_FOR_STRATEGY; // Pause for strategy
     this.matchState.phaseTimer = this.FREEZE_TIME;
 
     // Respawn Bots
@@ -183,12 +183,26 @@ export class MatchSimulator {
         this.events.unshift(`[Round ${this.matchState.round}] 💣 ${carrier.player.name} has the bomb.`);
     }
 
-    // Execute Buy Logic
+    // Note: Buy Logic is now deferred to applyStrategies
+  }
+
+  public applyStrategies(tStrategy: BuyStrategy, tTactic: Tactic, ctStrategy: BuyStrategy, ctTactic: Tactic) {
+    // 1. Set Tactics
+    this.tacticsManager.setTactic(TeamSide.T, tTactic);
+    this.tacticsManager.setTactic(TeamSide.CT, ctTactic);
+
+    // 2. Execute Buy Logic
     this.bots.forEach(bot => {
-        if (bot.player.inventory) {
-            BuyLogic.processBuy(bot.player.inventory, bot.side, bot.player.role);
-        }
+      if (bot.player.inventory) {
+        const strategy = bot.side === TeamSide.T ? tStrategy : ctStrategy;
+        BuyLogic.processBuy(bot.player.inventory, bot.side, bot.player.role, strategy);
+      }
     });
+
+    // 3. Start Freezetime
+    this.matchState.phase = MatchPhase.FREEZETIME;
+    this.events.unshift("🛒 Buy Phase / Strategy Confirmed.");
+    this.broadcast();
   }
 
   private scheduleTick() {
@@ -201,6 +215,11 @@ export class MatchSimulator {
   }
 
   private tick() {
+    if (this.matchState.phase === MatchPhase.PAUSED_FOR_STRATEGY) {
+      this.broadcast();
+      return;
+    }
+
     this.tickCount++;
 
     if (this.matchState.phase === MatchPhase.FREEZETIME) {
@@ -299,6 +318,7 @@ export class MatchSimulator {
           if (this.bomb.status === BombStatus.PLANTED) {
               this.bomb.startDefusing(bot.id);
           }
+      }
       }
     });
 
@@ -555,7 +575,7 @@ export class MatchSimulator {
               bot.player.inventory.hasKit = false;
               bot.player.inventory.utilities = [];
               bot.player.inventory.primaryWeapon = undefined;
-              bot.player.inventory.secondaryWeapon = undefined;
+              bot.player.inventory.secondaryWeapon = bot.side === TeamSide.T ? "glock-18" : "usp-s";
           }
       });
 
@@ -583,7 +603,7 @@ export class MatchSimulator {
               bot.player.inventory.hasKit = false;
               bot.player.inventory.utilities = [];
               bot.player.inventory.primaryWeapon = undefined;
-              bot.player.inventory.secondaryWeapon = undefined;
+              bot.player.inventory.secondaryWeapon = bot.side === TeamSide.T ? "glock-18" : "usp-s";
           }
       });
   }

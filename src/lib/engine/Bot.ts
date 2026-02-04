@@ -78,6 +78,11 @@ export class Bot {
         utilities: []
       };
     }
+
+    // Ensure default pistol
+    if (!this.player.inventory.secondaryWeapon) {
+      this.player.inventory.secondaryWeapon = side === TeamSide.T ? "glock-18" : "usp-s";
+    }
   }
 
   getEquippedWeapon(): Weapon | undefined {

@@ -1,30 +1,82 @@
 import { PlayerInventory } from "@/types";
 import { WEAPONS, EQUIPMENT_COSTS, TeamSide, WeaponType } from "./constants";
+import { BuyStrategy } from "./types";
 
 export class BuyLogic {
 
-  public static processBuy(inventory: PlayerInventory, side: TeamSide, role: string) {
+  public static processBuy(inventory: PlayerInventory, side: TeamSide, role: string, strategy?: BuyStrategy) {
     // Reset temporary round items (nades could be kept but for simplicity reset or check max)
     // We assume inventory persists across rounds, but nades might be used?
     // In this simulation, we'll refill if missing.
 
     // 1. Determine Buy Strategy
-    const money = inventory.money;
-    let strategy: "ECO" | "FORCE" | "FULL" = "ECO";
-
-    if (money >= 4000) strategy = "FULL";
-    else if (money >= 2000) strategy = "FORCE";
-    else strategy = "ECO";
+    if (!strategy) {
+      const money = inventory.money;
+      if (money >= 4000) strategy = "FULL";
+      else if (money >= 2000) strategy = "FORCE";
+      else strategy = "ECO";
+    }
 
     // 2. Buy Items based on strategy
 
-    // Always try to upgrade pistol if strictly default?
-    // Not critical.
+    switch (strategy) {
+      case "FULL":
+        this.buyFull(inventory, side, role);
+        break;
+      case "FORCE":
+        this.buyForce(inventory, side);
+        break;
+      case "HALF":
+        this.buyHalf(inventory, side);
+        break;
+      case "BONUS":
+        this.buyBonus(inventory, side);
+        break;
+      case "HERO":
+        this.buyHero(inventory, side, role);
+        break;
+      case "ECO":
+      default:
+        this.buyEco(inventory, side);
+        break;
+    }
+  }
 
-    if (strategy === "FULL") {
+  private static buyHalf(inventory: PlayerInventory, side: TeamSide) {
+    const reserve = 2000;
+    // 1. Armor (Vest)
+    if (inventory.money >= EQUIPMENT_COSTS.KEVLAR + reserve) {
+      this.buyArmor(inventory, false);
+    }
+    // 2. Pistol Upgrade
+    if (!inventory.secondaryWeapon) {
+      if (inventory.money >= 500 + reserve) {
+        if (side === TeamSide.T) this.purchase(inventory, "tec-9");
+        else this.purchase(inventory, "five-seven");
+      }
+    }
+    // 3. One Utility
+    if (inventory.money >= EQUIPMENT_COSTS.FLASHBANG + reserve) {
+      this.purchaseUtility(inventory, "flashbang");
+    }
+  }
+
+  private static buyBonus(inventory: PlayerInventory, side: TeamSide) {
+    // Light Armor
+    this.buyArmor(inventory, false);
+    // SMG
+    if (!inventory.primaryWeapon) {
+      if (side === TeamSide.T) {
+        if (inventory.money >= WEAPONS["mac-10"].cost) this.purchase(inventory, "mac-10");
+      } else {
+        if (inventory.money >= WEAPONS["mp9"].cost) this.purchase(inventory, "mp9");
+      }
+    }
+  }
+
+  private static buyHero(inventory: PlayerInventory, side: TeamSide, role: string) {
+    if (role.includes("Star") || role === "AWPer") {
       this.buyFull(inventory, side, role);
-    } else if (strategy === "FORCE") {
-      this.buyForce(inventory, side);
     } else {
       this.buyEco(inventory, side);
     }

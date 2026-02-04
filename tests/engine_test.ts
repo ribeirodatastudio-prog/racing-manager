@@ -32,12 +32,16 @@ const p1 = MOCK_PLAYERS[0]; // Zywoo
 const p2 = MOCK_PLAYERS[1]; // Karrigan (Lower skill)
 const bot1 = new Bot(p1, TeamSide.T, "mid");
 const bot2 = new Bot(p2, TeamSide.CT, "mid");
+// Give weapons that exist in JSON
+if (bot1.player.inventory) bot1.player.inventory.primaryWeapon = "ak-47";
+if (bot2.player.inventory) bot2.player.inventory.primaryWeapon = "ak-47";
+
 // DuelEngine doesn't use zone for cover in calculation anymore in this version, but that's fine.
 
 // Run 100 duels, Zywoo should win most
 let wins1 = 0;
 for (let i = 0; i < 100; i++) {
-  const res = DuelEngine.calculateOutcome(bot1, bot2);
+  const res = DuelEngine.calculateOutcome(bot1, bot2, 500);
   if (res.winnerId === bot1.id) wins1++;
 }
 console.log(`ZywOo wins: ${wins1}/100`);

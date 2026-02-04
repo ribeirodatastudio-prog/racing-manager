@@ -24,11 +24,14 @@ export interface MapData {
 export enum MatchPhase {
   WARMUP = "WARMUP",
   FREEZETIME = "FREEZETIME",
+  PAUSED_FOR_STRATEGY = "PAUSED_FOR_STRATEGY",
   LIVE = "LIVE",
   ROUND_END = "ROUND_END",
   HALFTIME = "HALFTIME",
   MATCH_END = "MATCH_END"
 }
+
+export type BuyStrategy = "ECO" | "FORCE" | "FULL" | "HALF" | "BONUS" | "HERO";
 
 export enum RoundEndReason {
   ELIMINATION_T = "ELIMINATION_T",

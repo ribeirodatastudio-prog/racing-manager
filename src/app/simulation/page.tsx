@@ -7,8 +7,9 @@ import { Player } from "@/types";
 import { MapVisualizer } from "@/components/simulation/MapVisualizer";
 import { SimulationControls } from "@/components/simulation/SimulationControls";
 import { Scoreboard } from "@/components/simulation/Scoreboard";
+import { StrategyPopup } from "@/components/simulation/StrategyPopup";
 import { Tactic, TeamSide } from "@/lib/engine/TacticsManager";
-import { MatchPhase } from "@/lib/engine/types";
+import { MatchPhase, BuyStrategy } from "@/lib/engine/types";
 
 // Helper to create 10 players from the mock 5
 const generatePlayers = (): Player[] => {
@@ -107,6 +108,14 @@ export default function SimulationPage() {
     else setCtTactic(tactic);
   };
 
+  const handleStrategyConfirm = (tBuy: BuyStrategy, tTactic: Tactic, ctBuy: BuyStrategy, ctTactic: Tactic) => {
+    if (simulatorRef.current) {
+      simulatorRef.current.applyStrategies(tBuy, tTactic, ctBuy, ctTactic);
+      setTTactic(tTactic);
+      setCtTactic(ctTactic);
+    }
+  };
+
   if (!gameState || !simulatorRef.current) {
     return <div className="text-white p-10">Loading Simulation...</div>;
   }
@@ -122,6 +131,12 @@ export default function SimulationPage() {
             Phase 4: Economy, Objectives & MR12 Logic
           </p>
         </header>
+
+        <StrategyPopup
+            matchState={gameState.matchState}
+            bots={gameState.bots}
+            onConfirm={handleStrategyConfirm}
+        />
 
         {/* Scoreboard */}
         <Scoreboard
