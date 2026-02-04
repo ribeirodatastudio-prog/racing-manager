@@ -43,8 +43,6 @@ export const MapVisualizer: React.FC<MapVisualizerProps> = ({ map, bots, selecte
   if (selectedBotId) {
     const selectedBot = bots.find(b => b.id === selectedBotId);
     if (selectedBot && selectedBot.path && selectedBot.path.length > 0) {
-      let startZone = map.getZone(selectedBot.currentZoneId);
-
       // Draw line from current position to first path node
       // Then from node to node
 

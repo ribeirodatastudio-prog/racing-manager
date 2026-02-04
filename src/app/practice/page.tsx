@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { MatchSimulator, SimulationState } from "@/lib/engine/MatchSimulator";
 import { MOCK_PLAYERS_EXPANDED } from "@/lib/mock-players-expanded";
 import { Player } from "@/types";
@@ -9,13 +9,13 @@ import { MapVisualizer } from "@/components/simulation/MapVisualizer";
 import { PracticeSidebar } from "@/components/practice/PracticeSidebar";
 import { CombatLog } from "@/components/practice/CombatLog";
 import { DuelStats } from "@/components/practice/DuelStats";
-import { Play, Square, RotateCcw, FastForward } from "lucide-react";
+import { Play, Square, RotateCcw } from "lucide-react";
 
 export default function PracticePage() {
   // --- State ---
   const [teamT, setTeamT] = useState<Player[]>([]);
   const [teamCT, setTeamCT] = useState<Player[]>([]);
-  const [overrides, setOverrides] = useState<Record<string, any>>({});
+  const [overrides, setOverrides] = useState<Record<string, Record<string, number>>>({});
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
 
   const [tacticT, setTacticT] = useState<Tactic>("DEFAULT");
@@ -27,20 +27,38 @@ export default function PracticePage() {
 
   const simulatorRef = useRef<MatchSimulator | null>(null);
 
-  // --- Initialization ---
-  useEffect(() => {
-    handleRandomize();
-  }, []);
-
   // --- Handlers ---
 
-  const handleRandomize = () => {
+  const handleReset = useCallback(() => {
+    if (simulatorRef.current) {
+      simulatorRef.current.reset();
+      setIsRunning(false);
+      setGameState({
+          bots: simulatorRef.current.bots,
+          tickCount: simulatorRef.current.tickCount,
+          events: simulatorRef.current.events,
+          stats: simulatorRef.current.stats,
+          matchState: simulatorRef.current.matchState,
+          bombState: simulatorRef.current.bomb,
+          roundTimer: simulatorRef.current.roundTimer
+      });
+    } else {
+        setGameState(null);
+    }
+  }, []);
+
+  const handleRandomize = useCallback(() => {
     // Pick 10 unique players
     const shuffled = [...MOCK_PLAYERS_EXPANDED].sort(() => Math.random() - 0.5);
     setTeamT(shuffled.slice(0, 5));
     setTeamCT(shuffled.slice(5, 10));
     handleReset(); // Reset sim if teams change
-  };
+  }, [handleReset]);
+
+  // --- Initialization ---
+  useEffect(() => {
+    handleRandomize();
+  }, [handleRandomize]);
 
   const handleOverrideUpdate = (playerId: string, stat: string, value: number) => {
     setOverrides(prev => ({
@@ -115,24 +133,6 @@ export default function PracticePage() {
     if (simulatorRef.current) {
       simulatorRef.current.stop();
       setIsRunning(false);
-    }
-  };
-
-  const handleReset = () => {
-    if (simulatorRef.current) {
-      simulatorRef.current.reset();
-      setIsRunning(false);
-      setGameState({
-          bots: simulatorRef.current.bots,
-          tickCount: simulatorRef.current.tickCount,
-          events: simulatorRef.current.events,
-          stats: simulatorRef.current.stats,
-          matchState: simulatorRef.current.matchState,
-          bombState: simulatorRef.current.bomb,
-          roundTimer: simulatorRef.current.roundTimer
-      });
-    } else {
-        setGameState(null);
     }
   };
 
