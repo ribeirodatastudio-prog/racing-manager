@@ -1,7 +1,7 @@
 import { DUST2_MAP } from "../src/lib/engine/maps/dust2";
 import { GameMap } from "../src/lib/engine/GameMap";
 import { Pathfinder } from "../src/lib/engine/Pathfinder";
-import { DuelSystem } from "../src/lib/engine/DuelSystem";
+import { DuelEngine } from "../src/lib/engine/DuelEngine";
 import { Bot } from "../src/lib/engine/Bot";
 import { MOCK_PLAYERS } from "../src/lib/mock-players";
 import { strict as assert } from "assert";
@@ -36,7 +36,7 @@ const zone = map.getZone("mid")!;
 // Run 100 duels, Zywoo should win most
 let wins1 = 0;
 for (let i = 0; i < 100; i++) {
-  const res = DuelSystem.resolveDuel(bot1, bot2, zone);
+  const res = DuelEngine.calculateOutcome(bot1, bot2);
   if (res.winnerId === bot1.id) wins1++;
 }
 console.log(`ZywOo wins: ${wins1}/100`);

@@ -36,7 +36,8 @@ export default function SimulationPage() {
     setGameState({
       bots: sim.bots,
       tickCount: sim.tickCount,
-      events: sim.events
+      events: sim.events,
+      stats: sim.stats
     });
 
     simulatorRef.current = sim;
@@ -81,7 +82,8 @@ export default function SimulationPage() {
       setGameState({
         bots: simulatorRef.current.bots,
         tickCount: simulatorRef.current.tickCount,
-        events: simulatorRef.current.events
+        events: simulatorRef.current.events,
+        stats: simulatorRef.current.stats
       });
     }
   };
