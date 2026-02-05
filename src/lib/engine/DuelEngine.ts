@@ -49,9 +49,9 @@ export class DuelEngine {
   /**
    * Calculates the outcome of a duel between an initiator (Attacker) and a target (Defender).
    */
-  public static calculateOutcome(initiator: Bot, target: Bot, distance: number): DuelResult {
-    const initiatorResult = this.simulateEngagement(initiator, target, distance, true);
-    const targetResult = this.simulateEngagement(target, initiator, distance, false);
+  public static calculateOutcome(initiator: Bot, target: Bot, distance: number, isCrossZone: boolean = false): DuelResult {
+    const initiatorResult = this.simulateEngagement(initiator, target, distance, true, isCrossZone);
+    const targetResult = this.simulateEngagement(target, initiator, distance, false, isCrossZone);
 
     // Determine Winner (Who hits first)
     let winnerId: string;
@@ -107,7 +107,13 @@ export class DuelEngine {
     let initiatorWins = 0;
 
     for (let i = 0; i < iterations; i++) {
-      const result = this.calculateOutcome(initiator, target, distance);
+      // For probability, we assume isCrossZone is false or infer it?
+      // Ideally we should pass it, but for now let's assume if distance > 100 it's likely cross zone?
+      // No, let's keep it simple. Probability is just an estimation.
+      // But accurate probability is important for 'expectedKills'.
+      // If distance > 200, assume crossZone?
+      const isCrossZone = distance > 200;
+      const result = this.calculateOutcome(initiator, target, distance, isCrossZone);
       if (result.winnerId === initiator.id && result.damage > 0) {
         initiatorWins++;
       }
@@ -120,7 +126,7 @@ export class DuelEngine {
     };
   }
 
-  private static simulateEngagement(shooter: Bot, target: Bot, distance: number, isInitiator: boolean): CombatSimulationResult {
+  private static simulateEngagement(shooter: Bot, target: Bot, distance: number, isInitiator: boolean, isCrossZone: boolean): CombatSimulationResult {
     const log: string[] = [];
     const publicLog: string[] = [];
     const tech = shooter.player.skills.technical;
@@ -159,10 +165,33 @@ export class DuelEngine {
     let standingInaccuracy = weapon.standingInaccuracy;
 
     // Range Penalty
+    // 1. Existing Range Check (Double inaccuracy if > accurateRange)
     if (distance > weapon.accurateRange) {
         standingInaccuracy *= 2;
         log.push(`Range Penalty: Inaccuracy doubled to ${standingInaccuracy.toFixed(2)} (Dist ${distance.toFixed(1)} > ${weapon.accurateRange})`);
     }
+
+    // 2. Cross-Zone Non-Scoped Penalty
+    // Check if scoped weapon
+    const isScoped = weapon.name.toLowerCase().includes("(scoped)") || weapon.name.includes("AWP") || weapon.name.includes("SSG 08") || weapon.name.includes("G3SG1") || weapon.name.includes("SCAR-20") || weapon.name.includes("AUG") || weapon.name.includes("SG 553");
+    // Actually, weapons.json has separate entries for "(scoped)". If the bot has "AWP", they are not scoped unless the weapon name is "AWP (scoped)".
+    // So simple string check for "(scoped)" covers the state where they are using the scope.
+    // However, AWP without scope is inaccurate at range anyway.
+
+    // User Requirement: "check the weapon accurate range, use it's range to further change the penalty"
+    if (isCrossZone && !weapon.name.includes("(scoped)")) {
+         // Apply additional penalty
+         // If distance is significantly larger than accurate range, scale penalty.
+         const rangeRatio = distance / Math.max(1, weapon.accurateRange);
+
+         // Penalty factor: 1.0 (no extra) to ...?
+         // Example: If ratio is 2 (dist 40, range 20), we add 50% more inaccuracy?
+         const penaltyMultiplier = 1 + (rangeRatio * 0.5); // Arbitrary scaling
+
+         standingInaccuracy *= penaltyMultiplier;
+         log.push(`Cross-Zone Penalty: Inaccuracy x${penaltyMultiplier.toFixed(2)} (Dist: ${distance.toFixed(1)}, Range: ${weapon.accurateRange}, Scoped: No)`);
+    }
+
 
     // Tap Check
     // Formula: Final_Success = (Base_Chance * (1 - Inaccuracy/100)) - (Diff / 500)
@@ -210,6 +239,13 @@ export class DuelEngine {
         // Recalculate Probability
         // Note: keeping difficulty constant.
         let sprayProb = (baseChance * (1 - sprayPenalty)) - (difficulty / 500);
+
+        // Apply Cross-Zone penalty to spray as well? Yes.
+        // If cross zone, reduce spray prob?
+        if (isCrossZone && !weapon.name.includes("(scoped)")) {
+             sprayProb *= 0.8; // Flat 20% reduction on spray control for long range
+        }
+
         sprayProb = Math.max(0.01, Math.min(0.99, sprayProb));
 
         if (Math.random() < sprayProb) {

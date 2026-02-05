@@ -10,6 +10,7 @@ import { Scoreboard } from "@/components/simulation/Scoreboard";
 import { StrategyPopup } from "@/components/simulation/StrategyPopup";
 import { Tactic, TeamSide } from "@/lib/engine/TacticsManager";
 import { MatchPhase, BuyStrategy } from "@/lib/engine/types";
+import { RoundResultOverlay } from "@/components/simulation/RoundResultOverlay";
 import { Users, RefreshCw, CheckCircle } from "lucide-react";
 
 export default function SimulationPage() {
@@ -237,6 +238,15 @@ export default function SimulationPage() {
             bots={gameState.bots}
             onConfirm={handleStrategyConfirm}
         />
+
+        {gameState.matchState.phase === MatchPhase.ROUND_END && (
+          <RoundResultOverlay
+            matchState={gameState.matchState}
+            bots={gameState.bots}
+            stats={gameState.stats}
+            onNextRound={handleNextRound}
+          />
+        )}
 
         {/* Scoreboard */}
         <Scoreboard
