@@ -40,7 +40,8 @@ export default function PracticePage() {
           stats: simulatorRef.current.stats,
           matchState: simulatorRef.current.matchState,
           bombState: simulatorRef.current.bomb,
-          roundTimer: simulatorRef.current.roundTimer
+          roundTimer: simulatorRef.current.roundTimer,
+          zoneStates: simulatorRef.current.zoneStates
       });
     } else {
         setGameState(null);
@@ -122,7 +123,8 @@ export default function PracticePage() {
         stats: sim.stats,
         matchState: sim.matchState,
         bombState: sim.bomb,
-        roundTimer: sim.roundTimer
+        roundTimer: sim.roundTimer,
+        zoneStates: sim.zoneStates
     });
 
     sim.start();

@@ -7,6 +7,7 @@ export interface TechnicalSkills {
   crosshairPlacement: number;
   sprayControl: number;
   utilityUsage: number;
+  utility: number; // For compatibility, or rename usage to utility in implementation
   firstBulletPrecision: number;
   movement: number;
   clutching: number;
