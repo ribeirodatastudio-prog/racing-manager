@@ -6,6 +6,7 @@ import { generateTeam } from "@/lib/player-generator";
 import { Player } from "@/types";
 import { MapVisualizer } from "@/components/simulation/MapVisualizer";
 import { SimulationControls } from "@/components/simulation/SimulationControls";
+import { MatchHUD } from "@/components/simulation/MatchHUD";
 import { Scoreboard } from "@/components/simulation/Scoreboard";
 import { SituationRoom } from "@/components/simulation/SituationRoom";
 import { Tactic, TeamSide } from "@/lib/engine/TacticsManager";
@@ -260,7 +261,12 @@ export default function SimulationPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Map Visualization (Left 2 cols) */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-2 relative">
+            <MatchHUD
+              roundTimer={gameState.roundTimer}
+              matchState={gameState.matchState}
+              bombState={gameState.bombState}
+            />
             <MapVisualizer
               map={simulatorRef.current.map}
               bots={gameState.bots}

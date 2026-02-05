@@ -76,7 +76,7 @@ export const SituationRoom: React.FC<SituationRoomProps> = ({ bots, matchState, 
   const AVAILABLE_TACTICS = activeTab === TeamSide.T ? T_TACTICS : CT_TACTICS;
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-900/95 flex flex-col items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] bg-gray-900/95 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-4xl bg-gray-800 border border-gray-700 rounded-lg shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
 
         {/* Header */}

@@ -469,22 +469,31 @@ export class Bot {
           }
       }
       else if (bomb.status === BombStatus.PLANTED) {
-          // Fix 5: Post-Plant Positioning
-          if (map.data.postPlantPositions && bomb.plantSite) {
-               const siteKey = bomb.plantSite === map.data.bombSites.A ? "A" : "B";
-               const spots = map.data.postPlantPositions[siteKey];
-               if (spots && spots.length > 0) {
-                   let bestSpot = spots[0];
-                   let minDist = Infinity;
-                   spots.forEach(spot => {
-                       const d = map.getDistance(this.currentZoneId, spot);
-                       if (d < minDist) {
-                           minDist = d;
-                           bestSpot = spot;
-                       }
-                   });
-                   desiredGoal = bestSpot;
-                   desiredState = BotAIState.HOLDING_ANGLE;
+          // Post-Plant "Spread out" Behavior
+          if (bomb.plantSite) {
+               const siteZone = map.getZone(bomb.plantSite);
+               if (siteZone) {
+                    // Identify adjacent zones for spread
+                    const candidates = siteZone.connections;
+
+                    // Filter candidates to ensure uniqueness where possible
+                    const takenGoals = allBots
+                        .filter(b => b.side === TeamSide.T && b.id !== this.id && b.status === "ALIVE")
+                        .map(b => b.goalZoneId);
+
+                    const availableCandidates = candidates.filter(c => !takenGoals.includes(c));
+
+                    let chosenZone = bomb.plantSite;
+
+                    if (availableCandidates.length > 0) {
+                         chosenZone = availableCandidates[Math.floor(Math.random() * availableCandidates.length)];
+                    } else if (candidates.length > 0) {
+                         // Overlap if necessary
+                         chosenZone = candidates[Math.floor(Math.random() * candidates.length)];
+                    }
+
+                    desiredGoal = chosenZone;
+                    desiredState = BotAIState.HOLDING_ANGLE;
                } else {
                    desiredGoal = bomb.plantSite;
                    desiredState = BotAIState.HOLDING_ANGLE;
