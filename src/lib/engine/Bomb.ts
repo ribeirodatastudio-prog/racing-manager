@@ -86,10 +86,10 @@ export class Bomb {
       return true;
   }
 
-  updateDefusing(hasKit: boolean): boolean {
+  updateDefusing(hasDefuseKit: boolean): boolean {
       if (this.status !== BombStatus.DEFUSING) return false;
       this.defuseProgress++;
-      const required = hasKit ? this.TICKS_DEFUSE_KIT : this.TICKS_DEFUSE_NO_KIT;
+      const required = hasDefuseKit ? this.TICKS_DEFUSE_KIT : this.TICKS_DEFUSE_NO_KIT;
       if (this.defuseProgress >= required) {
           this.status = BombStatus.DEFUSED;
           return true; // Defused

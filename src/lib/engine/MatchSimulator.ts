@@ -159,8 +159,8 @@ export class MatchSimulator {
             b.player.inventory.money = ECONOMY.START_MONEY;
             b.player.inventory.hasKevlar = false;
             b.player.inventory.hasHelmet = false;
-            b.player.inventory.hasKit = false;
-            b.player.inventory.utilities = [];
+            b.player.inventory.hasDefuseKit = false;
+            b.player.inventory.grenades = [];
             b.player.inventory.primaryWeapon = undefined;
             b.player.inventory.secondaryWeapon = b.side === TeamSide.T ? "glock-18" : "usp-s";
         }
@@ -172,6 +172,8 @@ export class MatchSimulator {
 
   private startRound() {
     // Reset Map Objects
+    // Reset Map Cover (Molotov effects)
+    this.map = new GameMap(JSON.parse(JSON.stringify(DUST2_MAP)));
     this.bomb.reset();
     this.roundTimer = this.ROUND_TIME;
     this.roundKills = 0; // Reset kills for the round
@@ -229,6 +231,14 @@ export class MatchSimulator {
 
     // 3. Start Freezetime
     this.matchState.phase = MatchPhase.FREEZETIME;
+
+    // Log Financial State
+    const tMoney = this.bots.filter(b => b.side === TeamSide.T).reduce((acc, b) => acc + (b.player.inventory?.money || 0), 0);
+    const ctMoney = this.bots.filter(b => b.side === TeamSide.CT).reduce((acc, b) => acc + (b.player.inventory?.money || 0), 0);
+    const tLoss = ECONOMY.LOSS_BONUS_START + (this.matchState.lossBonus.T * ECONOMY.LOSS_BONUS_INCREMENT);
+    const ctLoss = ECONOMY.LOSS_BONUS_START + (this.matchState.lossBonus.CT * ECONOMY.LOSS_BONUS_INCREMENT);
+
+    this.events.unshift(`💰 Team Bank: T $${tMoney} (Next Min: $${tLoss}) | CT $${ctMoney} (Next Min: $${ctLoss})`);
     this.events.unshift("🛒 Buy Phase / Strategy Confirmed.");
     this.broadcast();
   }
@@ -332,16 +342,44 @@ export class MatchSimulator {
     this.bots.forEach(bot => {
       if (bot.status === "DEAD") return;
 
-      // Check for Utility Finish (Flashbang Trigger)
+      // Check for Utility Finish
       if (bot.isChargingUtility && bot.utilityChargeTimer === 1) {
-           // Utility about to deploy. Stun enemies in goal zone.
-           if (bot.goalZoneId) {
-               this.events.unshift(`[Tick ${this.tickCount}] 🧨 ${bot.player.name} throws utility into ${this.map.getZone(bot.goalZoneId)?.name}!`);
-               this.bots.forEach(victim => {
-                   if (victim.status === "ALIVE" && victim.side !== bot.side && victim.currentZoneId === bot.goalZoneId) {
-                       victim.stunTimer = 3;
+           const utilType = bot.activeUtility || "flashbang";
+           const targetZone = bot.goalZoneId;
+
+           // Remove from inventory
+           if (bot.player.inventory) {
+               const idx = bot.player.inventory.grenades.indexOf(utilType);
+               if (idx !== -1) {
+                   bot.player.inventory.grenades.splice(idx, 1);
+               }
+           }
+
+           bot.utilityCooldown = 20;
+           bot.hasThrownEntryUtility = true;
+
+           const inventoryCount = bot.player.inventory?.grenades.filter(g => g === utilType).length ?? 0;
+           const targetName = targetZone ? this.map.getZone(targetZone)?.name : "Unknown";
+           this.events.unshift(`[Tick ${this.tickCount}] 🧨 ${bot.player.name} threw ${utilType.toUpperCase()} into ${targetName} (Inventory: ${inventoryCount})`);
+
+           if (targetZone) {
+               if (utilType === "flashbang") {
+                   this.bots.forEach(victim => {
+                       if (victim.status === "ALIVE" && victim.side !== bot.side && victim.currentZoneId === targetZone) {
+                           victim.stunTimer = 20;
+                       }
+                   });
+               } else if (utilType === "molotov" || utilType === "incendiary") {
+                   const zone = this.map.getZone(targetZone);
+                   if (zone) {
+                       const skill = bot.player.skills.technical.utility;
+                       if (Math.random() * 200 < skill) {
+                           zone.cover = Math.max(0, zone.cover - 0.3);
+                           this.events.unshift(`> 🔥 Molotov burned cover in ${targetName}!`);
+                       }
                    }
-               });
+               }
+               // Smoke/HE Logic placeholders (Visual/Sound events usually)
            }
       }
 
@@ -483,8 +521,8 @@ export class MatchSimulator {
         }
     } else if (this.bomb.status === BombStatus.DEFUSING) {
         const defuser = this.bots.find(b => b.id === this.bomb.defuserId);
-        const hasKit = defuser?.player.inventory?.hasKit || false;
-        if (this.bomb.updateDefusing(hasKit)) {
+        const hasDefuseKit = defuser?.player.inventory?.hasDefuseKit || false;
+        if (this.bomb.updateDefusing(hasDefuseKit)) {
              // Defused! handled in checkWinConditions or here
              // We'll let checkWinConditions handle it via status
         }
@@ -648,7 +686,17 @@ export class MatchSimulator {
         if (loser.hp <= 0) {
             const weapon = winner.getEquippedWeapon();
             const weaponName = weapon ? weapon.name : "Unknown";
-            this.events.unshift(`💀 [${weaponName}] ${loser.player.name} eliminated by ${winner.player.name}`);
+
+            // Kill Reward
+            let reward = 300;
+            if (weapon) {
+                reward = EconomySystem.getKillReward(weapon);
+            }
+            if (winner.player.inventory) {
+                winner.player.inventory.money = Math.min(ECONOMY.MAX_MONEY, winner.player.inventory.money + reward);
+            }
+
+            this.events.unshift(`💀 [${weaponName}] ${loser.player.name} eliminated by ${winner.player.name} (+$${reward})`);
             this.stats[winner.id].kills++;
             this.stats[winner.id].actualKills++;
             this.stats[loser.id].deaths++;
@@ -783,22 +831,15 @@ export class MatchSimulator {
 
       this.bots.forEach(bot => {
           if (!bot.player.inventory) return;
-          let income = EconomySystem.calculateIncome(
+          const income = EconomySystem.calculateIncome(
               bot.side,
               winner,
               reason,
               this.matchState.lossBonus[bot.side],
               // Bomb planted check
-              this.bomb.status === BombStatus.PLANTED || this.bomb.status === BombStatus.DETONATED || this.bomb.status === BombStatus.DEFUSED
-              // Actually EconomySystem just checks boolean isPlanted.
-              // So if it was planted at any point?
-              // Usually if T loses but planted, they get bonus.
-              // If T wins via Explosion, they get win money.
+              this.bomb.status === BombStatus.PLANTED || this.bomb.status === BombStatus.DETONATED || this.bomb.status === BombStatus.DEFUSED,
+              bot.status === "ALIVE"
           );
-          // Special case: T survives after time runs out -> $0 income
-          if (bot.side === TeamSide.T && bot.status === "ALIVE" && reason === RoundEndReason.TIME_RUNNING_OUT) {
-              income = 0;
-          }
           bot.player.inventory.money = Math.min(ECONOMY.MAX_MONEY, bot.player.inventory.money + income);
       });
   }
@@ -814,8 +855,8 @@ export class MatchSimulator {
               bot.player.inventory.money = startMoney;
               bot.player.inventory.hasKevlar = false;
               bot.player.inventory.hasHelmet = false;
-              bot.player.inventory.hasKit = false;
-              bot.player.inventory.utilities = [];
+              bot.player.inventory.hasDefuseKit = false;
+              bot.player.inventory.grenades = [];
               bot.player.inventory.primaryWeapon = undefined;
               bot.player.inventory.secondaryWeapon = bot.side === TeamSide.T ? "glock-18" : "usp-s";
           }
@@ -842,8 +883,8 @@ export class MatchSimulator {
               // Implies fresh start.
               bot.player.inventory.hasKevlar = false;
               bot.player.inventory.hasHelmet = false;
-              bot.player.inventory.hasKit = false;
-              bot.player.inventory.utilities = [];
+              bot.player.inventory.hasDefuseKit = false;
+              bot.player.inventory.grenades = [];
               bot.player.inventory.primaryWeapon = undefined;
               bot.player.inventory.secondaryWeapon = bot.side === TeamSide.T ? "glock-18" : "usp-s";
           }

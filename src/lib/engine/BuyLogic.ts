@@ -5,9 +5,9 @@ import { BuyStrategy } from "./types";
 export class BuyLogic {
 
   public static processBuy(inventory: PlayerInventory, side: TeamSide, role: string, strategy?: BuyStrategy) {
-    // Reset temporary round items (nades could be kept but for simplicity reset or check max)
-    // We assume inventory persists across rounds, but nades might be used?
-    // In this simulation, we'll refill if missing.
+    // Reset temporary round items not handled by MatchSimulator reset?
+    // MatchSimulator resets grenades to [] at start of buy phase/round.
+    // So inventory.grenades is empty coming in.
 
     // 1. Determine Buy Strategy
     if (!strategy) {
@@ -18,7 +18,6 @@ export class BuyLogic {
     }
 
     // 2. Buy Items based on strategy
-
     switch (strategy) {
       case "FULL":
         this.buyFull(inventory, side, role);
@@ -42,182 +41,204 @@ export class BuyLogic {
     }
   }
 
+  // --- Strategies ---
+
+  private static buyFull(inventory: PlayerInventory, side: TeamSide, role: string) {
+    // Priority: Rifle -> Kevlar -> Smoke -> Flash -> Molly -> HE (implied)
+
+    // 1. Primary Weapon
+    this.buyPrimary(inventory, side, role, "FULL");
+
+    // 2. Armor (Full)
+    this.buyArmor(inventory, true);
+
+    // 3. Kit (CT) - High priority for Full buy? usually yes.
+    if (side === TeamSide.CT) this.buyDefuseKit(inventory);
+
+    // 4. Utilities
+    this.buyGrenade(inventory, "smoke");
+    this.buyGrenade(inventory, "flashbang");
+    this.buyGrenade(inventory, "flashbang"); // Try second flash
+
+    const molly = side === TeamSide.T ? "molotov" : "incendiary";
+    this.buyGrenade(inventory, molly);
+
+    this.buyGrenade(inventory, "he");
+  }
+
+  private static buyForce(inventory: PlayerInventory, side: TeamSide) {
+    // Force: Armor -> Cheap Weapon -> Some Util
+    this.buyArmor(inventory, true);
+
+    if (!inventory.primaryWeapon) {
+       // SMG / Galil / Famas
+       if (side === TeamSide.T) {
+          if (!this.purchase(inventory, "galil_ar")) {
+             if (!this.purchase(inventory, "mac-10")) {
+                 this.purchase(inventory, "tec-9");
+             }
+          }
+       } else {
+          if (!this.purchase(inventory, "famas")) {
+             if (!this.purchase(inventory, "mp9")) {
+                 this.purchase(inventory, "five-seven");
+             }
+          }
+       }
+    }
+
+    // Grenades
+    this.buyGrenade(inventory, "flashbang");
+    this.buyGrenade(inventory, "smoke");
+  }
+
   private static buyHalf(inventory: PlayerInventory, side: TeamSide) {
     const reserve = 2000;
-    // 1. Armor (Vest)
+
+    // Armor (Vest) if > reserve
     if (inventory.money >= EQUIPMENT_COSTS.KEVLAR + reserve) {
-      this.buyArmor(inventory, false);
+        this.buyArmor(inventory, false);
     }
-    // 2. Pistol Upgrade
-    if (!inventory.secondaryWeapon) {
-      if (inventory.money >= 500 + reserve) {
-        if (side === TeamSide.T) this.purchase(inventory, "tec-9");
-        else this.purchase(inventory, "five-seven");
-      }
+
+    // Pistol Upgrade
+    if (!inventory.secondaryWeapon || inventory.secondaryWeapon === "glock-18" || inventory.secondaryWeapon === "usp-s") {
+         if (inventory.money >= 500 + reserve) {
+            if (side === TeamSide.T) this.purchase(inventory, "tec-9");
+            else this.purchase(inventory, "five-seven");
+         }
     }
-    // 3. One Utility
+
+    // One Flash
     if (inventory.money >= EQUIPMENT_COSTS.FLASHBANG + reserve) {
-      this.purchaseUtility(inventory, "flashbang");
+        this.buyGrenade(inventory, "flashbang");
     }
   }
 
   private static buyBonus(inventory: PlayerInventory, side: TeamSide) {
     // Light Armor
     this.buyArmor(inventory, false);
+
     // SMG
     if (!inventory.primaryWeapon) {
-      if (side === TeamSide.T) {
-        if (inventory.money >= WEAPONS["mac-10"].cost) this.purchase(inventory, "mac-10");
-      } else {
-        if (inventory.money >= WEAPONS["mp9"].cost) this.purchase(inventory, "mp9");
-      }
+        if (side === TeamSide.T) this.purchase(inventory, "mac-10");
+        else this.purchase(inventory, "mp9");
     }
   }
 
   private static buyHero(inventory: PlayerInventory, side: TeamSide, role: string) {
     if (role.includes("Star") || role === "AWPer") {
-      this.buyFull(inventory, side, role);
+        this.buyFull(inventory, side, role);
     } else {
-      this.buyEco(inventory, side);
-    }
-  }
-
-  private static buyFull(inventory: PlayerInventory, side: TeamSide, role: string) {
-    // 1. Armor
-    this.buyArmor(inventory, true);
-
-    // 2. Primary Weapon
-    // If we already have a primary, keep it (unless we want to drop? For now keep).
-    if (!inventory.primaryWeapon) {
-      if (role === "AWPer" && inventory.money >= WEAPONS["awp"].cost) {
-        this.purchase(inventory, "awp");
-      } else {
-        // Rifler
-        if (side === TeamSide.T) {
-          if (inventory.money >= WEAPONS["ak-47"].cost) this.purchase(inventory, "ak-47");
-          else if (inventory.money >= WEAPONS["galil_ar"].cost) this.purchase(inventory, "galil_ar");
-        } else {
-          if (inventory.money >= WEAPONS["m4a1-s"].cost) this.purchase(inventory, "m4a1-s"); // Prefer -S for now
-          else if (inventory.money >= WEAPONS["famas"].cost) this.purchase(inventory, "famas");
-        }
-      }
-    }
-
-    // 3. Kit (CT)
-    if (side === TeamSide.CT && !inventory.hasKit) {
-      if (inventory.money >= EQUIPMENT_COSTS.KIT) {
-        inventory.money -= EQUIPMENT_COSTS.KIT;
-        inventory.hasKit = true;
-      }
-    }
-
-    // 4. Utilities (Simple fill)
-    this.buyUtility(inventory, side);
-  }
-
-  private static buyForce(inventory: PlayerInventory, side: TeamSide) {
-    // Armor (Vest only usually, but let's try Helm if affordable)
-    this.buyArmor(inventory, true); // Try full armor
-
-    if (!inventory.primaryWeapon) {
-      // SMGs or Cheap Rifles
-      if (side === TeamSide.T) {
-        if (inventory.money >= WEAPONS["galil_ar"].cost) this.purchase(inventory, "galil_ar");
-        else if (inventory.money >= WEAPONS["mac-10"].cost) this.purchase(inventory, "mac-10");
-        else if (inventory.money >= WEAPONS["tec-9"].cost) this.purchase(inventory, "tec-9"); // Pistol upgrade
-      } else {
-        if (inventory.money >= WEAPONS["famas"].cost) this.purchase(inventory, "famas");
-        else if (inventory.money >= WEAPONS["mp9"].cost) this.purchase(inventory, "mp9");
-        else if (inventory.money >= WEAPONS["five-seven"].cost) this.purchase(inventory, "five-seven");
-      }
-    }
-
-    // Few nades
-    if (inventory.money >= EQUIPMENT_COSTS.FLASHBANG) {
-       this.purchaseUtility(inventory, "flashbang");
+        this.buyEco(inventory, side);
     }
   }
 
   private static buyEco(inventory: PlayerInventory, side: TeamSide) {
-    // Upgrade Pistol if possible
-    if (!inventory.secondaryWeapon) {
-       if (side === TeamSide.T && inventory.money >= WEAPONS["p250"].cost) this.purchase(inventory, "p250");
-       else if (side === TeamSide.CT && inventory.money >= WEAPONS["p250"].cost) this.purchase(inventory, "p250");
+    // P250 if possible
+    if ((!inventory.secondaryWeapon || inventory.secondaryWeapon === "glock-18" || inventory.secondaryWeapon === "usp-s") && inventory.money >= 300) {
+        this.purchase(inventory, "p250");
     }
-    // Maybe a flash
-    if (inventory.money > 2000) { // Should save, but if we have excess
-       this.purchaseUtility(inventory, "flashbang");
+    // Maybe a flash if rich for eco
+    if (inventory.money > 2500) {
+        this.buyGrenade(inventory, "flashbang");
     }
+  }
+
+  // --- Helpers ---
+
+  private static buyPrimary(inventory: PlayerInventory, side: TeamSide, role: string, strategy: string) {
+      if (inventory.primaryWeapon) return;
+
+      if (role === "AWPer" && inventory.money >= WEAPONS["awp"].cost) {
+          this.purchase(inventory, "awp");
+          return;
+      }
+
+      // Rifles
+      if (side === TeamSide.T) {
+          if (!this.purchase(inventory, "ak-47")) {
+              this.purchase(inventory, "galil_ar");
+          }
+      } else {
+           if (!this.purchase(inventory, "m4a1-s")) { // Prefer -S
+               this.purchase(inventory, "famas");
+           }
+      }
   }
 
   private static buyArmor(inventory: PlayerInventory, helmet: boolean) {
-    if (inventory.hasHelmet) return; // Maxed
-    if (inventory.hasKevlar && !helmet) return; // Has vest, doesn't want helmet
+    if (inventory.hasHelmet) return; // Full
+    if (inventory.hasKevlar && !helmet) return; // Has vest, satisfied
+
+    const costVest = EQUIPMENT_COSTS.KEVLAR;
+    const costHelmUpgrade = EQUIPMENT_COSTS.HELMET; // 350
+    const costFull = EQUIPMENT_COSTS.FULL_ARMOR; // 1000
 
     if (inventory.hasKevlar && helmet) {
-      // Upgrade
-      if (inventory.money >= EQUIPMENT_COSTS.HELMET) {
-        inventory.money -= EQUIPMENT_COSTS.HELMET;
-        inventory.hasHelmet = true;
-      }
+        if (inventory.money >= costHelmUpgrade) {
+            inventory.money -= costHelmUpgrade;
+            inventory.hasHelmet = true;
+        }
     } else {
-      // Buy Full or Vest
-      const targetCost = helmet ? EQUIPMENT_COSTS.FULL_ARMOR : EQUIPMENT_COSTS.KEVLAR;
-      if (inventory.money >= targetCost) {
-        inventory.money -= targetCost;
-        inventory.hasKevlar = true;
-        if (helmet) inventory.hasHelmet = true;
-      } else if (inventory.money >= EQUIPMENT_COSTS.KEVLAR) {
-        inventory.money -= EQUIPMENT_COSTS.KEVLAR;
-        inventory.hasKevlar = true;
-      }
+        if (helmet && inventory.money >= costFull) {
+            inventory.money -= costFull;
+            inventory.hasKevlar = true;
+            inventory.hasHelmet = true;
+        } else if (inventory.money >= costVest) {
+            inventory.money -= costVest;
+            inventory.hasKevlar = true;
+        }
     }
   }
 
-  private static purchase(inventory: PlayerInventory, weaponId: string) {
-    const weapon = WEAPONS[weaponId];
-    if (!weapon) return;
-
-    // Check cost
-    if (inventory.money < weapon.cost) return;
-
-    // Deduct
-    inventory.money -= weapon.cost;
-
-    // Equip
-    if (weapon.type === WeaponType.PISTOL) {
-      inventory.secondaryWeapon = weaponId;
-    } else {
-      inventory.primaryWeapon = weaponId;
-    }
+  private static buyDefuseKit(inventory: PlayerInventory) {
+      if (inventory.hasDefuseKit) return;
+      if (inventory.money >= EQUIPMENT_COSTS.KIT) {
+          inventory.money -= EQUIPMENT_COSTS.KIT;
+          inventory.hasDefuseKit = true;
+      }
   }
 
-  private static buyUtility(inventory: PlayerInventory, side: TeamSide) {
-    const utils = ["smoke", "flashbang", "he"];
-    if (side === TeamSide.T) utils.push("molotov");
-    else utils.push("incendiary");
+  private static buyGrenade(inventory: PlayerInventory, type: string) {
+      // 1. Check Limits
+      if (inventory.grenades.length >= 4) return;
 
-    utils.forEach(u => this.purchaseUtility(inventory, u));
-  }
+      const currentCount = inventory.grenades.filter(g => g === type).length;
+      if (type === "flashbang") {
+          if (currentCount >= 2) return;
+      } else {
+          if (currentCount >= 1) return;
+      }
 
-  private static purchaseUtility(inventory: PlayerInventory, utilName: string) {
-    // Simple mapping
-    let cost = 0;
-    switch(utilName) {
+      // 2. Check Cost
+      let cost = 0;
+      switch(type) {
         case "smoke": cost = EQUIPMENT_COSTS.SMOKE; break;
         case "flashbang": cost = EQUIPMENT_COSTS.FLASHBANG; break;
         case "he": cost = EQUIPMENT_COSTS.HE; break;
         case "molotov": cost = EQUIPMENT_COSTS.MOLOTOV; break;
         case "incendiary": cost = EQUIPMENT_COSTS.INCENDIARY; break;
-    }
+        default: return;
+      }
 
-    if (inventory.money >= cost) {
-        // Check if already has? (Assume 1 of each for simplicity)
-        // inventory.utilities is string[]
-        if (!inventory.utilities.includes(utilName)) {
-            inventory.money -= cost;
-            inventory.utilities.push(utilName);
-        }
+      if (inventory.money >= cost) {
+          inventory.money -= cost;
+          inventory.grenades.push(type);
+      }
+  }
+
+  private static purchase(inventory: PlayerInventory, weaponId: string): boolean {
+    const weapon = WEAPONS[weaponId];
+    if (!weapon) return false;
+
+    if (inventory.money < weapon.cost) return false;
+
+    inventory.money -= weapon.cost;
+    if (weapon.type === WeaponType.PISTOL) {
+        inventory.secondaryWeapon = weaponId;
+    } else {
+        inventory.primaryWeapon = weaponId;
     }
+    return true;
   }
 }

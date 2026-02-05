@@ -39,7 +39,7 @@ export class DuelEngine {
    * 10 seconds without kit, 5 seconds with kit.
    */
   public static getDefuseTime(bot: Bot): number {
-    if (bot.player.inventory?.hasKit) {
+    if (bot.player.inventory?.hasDefuseKit) {
       return 5000;
     }
     return 10000;
