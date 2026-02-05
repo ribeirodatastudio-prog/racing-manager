@@ -71,8 +71,8 @@ export const MapVisualizer: React.FC<MapVisualizerProps> = ({ map, bots, selecte
   }
 
   return (
-    <div className="w-full aspect-square bg-zinc-900 border border-zinc-700 p-4 relative overflow-hidden rounded-none">
-      <svg viewBox="0 0 1000 1000" className="w-full h-full">
+    <div className="w-full aspect-[1000/1200] bg-zinc-900 border border-zinc-700 p-4 relative overflow-hidden rounded-none">
+      <svg viewBox="0 0 1000 1200" className="w-full h-full">
         {/* Connections */}
         {connections}
 

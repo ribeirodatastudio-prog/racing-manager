@@ -1,10 +1,10 @@
 import { Bot, BotAIState } from "./Bot";
 import { GameMap } from "./GameMap";
 import { TacticsManager, TeamSide, Tactic } from "./TacticsManager";
-import { DuelEngine, DuelResult } from "./DuelEngine";
+import { DuelEngine } from "./DuelEngine";
 import { Player } from "@/types";
 import { DUST2_MAP } from "./maps/dust2";
-import { MatchState, MatchPhase, RoundEndReason, RoundHistory, BuyStrategy } from "./types";
+import { MatchState, MatchPhase, RoundEndReason, BuyStrategy } from "./types";
 import { EconomySystem } from "./EconomySystem";
 import { BuyLogic } from "./BuyLogic";
 import { ECONOMY } from "./constants";
@@ -99,7 +99,7 @@ export class MatchSimulator {
     });
 
     // Start in Freeze Time
-    this.startRound(true);
+    this.startRound();
     this.broadcast();
   }
 
@@ -163,11 +163,11 @@ export class MatchSimulator {
         }
     });
 
-    this.startRound(true);
+    this.startRound();
     this.broadcast();
   }
 
-  private startRound(isMatchStart: boolean = false) {
+  private startRound() {
     // Reset Map Objects
     this.bomb.reset();
     this.roundTimer = this.ROUND_TIME;
@@ -420,6 +420,7 @@ export class MatchSimulator {
   }
 
   private resolveCombat() {
+    // 1. Map bots to zones
     const zoneOccupants: Record<string, Bot[]> = {};
     this.bots.forEach(bot => {
       if (bot.status === "DEAD") return;
@@ -428,101 +429,117 @@ export class MatchSimulator {
     });
 
     const foughtThisTick = new Set<string>();
+    const livingBots = this.bots.filter(b => b.status === "ALIVE");
 
-    Object.entries(zoneOccupants).forEach(([zoneId, bots]) => {
-      const ts = bots.filter(b => b.side === TeamSide.T);
-      const cts = bots.filter(b => b.side === TeamSide.CT);
+    // Randomize turn order
+    const attackers = [...livingBots].sort(() => Math.random() - 0.5);
 
-      if (ts.length > 0 && cts.length > 0) {
-        const zone = this.map.getZone(zoneId);
-        const allBots = [...ts, ...cts].sort(() => Math.random() - 0.5);
+    attackers.forEach(attacker => {
+        if (attacker.status === "DEAD") return;
+        if (foughtThisTick.has(attacker.id)) return;
 
-        allBots.forEach(attacker => {
-           if (attacker.status === "DEAD") return;
-           if (foughtThisTick.has(attacker.id)) return;
+        // Skip if busy (planting/defusing/charging)
+        // Verify against bomb state
+        if (this.bomb.planterId === attacker.id) return;
+        if (this.bomb.defuserId === attacker.id) return;
+        if (attacker.aiState === BotAIState.CHARGING_UTILITY) return;
 
-           // Can't shoot if planting/defusing
-           if (attacker.aiState === BotAIState.PLANTING && attacker.hasBomb) return; // Simplified check
-           if (attacker.aiState === BotAIState.DEFUSING && this.bomb.defuserId === attacker.id) return;
-           // Can't shoot if Charging Utility
-           if (attacker.aiState === BotAIState.CHARGING_UTILITY) return;
+        // Find potential targets:
+        // 1. In same zone
+        // 2. In connected zones (Neighbors)
+        const currentZone = this.map.getZone(attacker.currentZoneId);
+        if (!currentZone) return;
 
-           // Actually, verify against bomb state
-           if (this.bomb.planterId === attacker.id) return;
-           if (this.bomb.defuserId === attacker.id) return;
+        const potentialTargets: { bot: Bot; distance: number; isCrossZone: boolean }[] = [];
 
-           const targets = allBots.filter(b => b.side !== attacker.side && b.status === "ALIVE");
-           if (targets.length === 0) return;
+        // Same Zone Targets (Distance ~ 100)
+        const sameZoneEnemies = (zoneOccupants[attacker.currentZoneId] || [])
+            .filter(b => b.side !== attacker.side && b.status === "ALIVE");
 
-           const target = targets[Math.floor(Math.random() * targets.length)];
-
-           foughtThisTick.add(attacker.id);
-
-           // Interrupt logic
-           if (this.bomb.planterId === target.id) {
-               this.bomb.abortPlanting();
-               target.aiState = BotAIState.DEFAULT; // Force out of plant state
-           }
-           if (this.bomb.defuserId === target.id) {
-               this.bomb.abortDefusing();
-               target.aiState = BotAIState.DEFAULT;
-           }
-           if (target.aiState === BotAIState.CHARGING_UTILITY) {
-               target.aiState = BotAIState.DEFAULT; // Interrupted
-               target.isChargingUtility = false;
-               target.utilityChargeTimer = 0;
-           }
-
-           // Shooting adds NOISE
-           if (this.zoneStates[attacker.currentZoneId]) {
-               this.zoneStates[attacker.currentZoneId].noiseLevel += 50; // Gunshot noise
-           }
-
-           const probs = DuelEngine.getWinProbability(attacker, target, 100, 20);
-           this.stats[attacker.id].expectedKills += probs.initiatorWinRate;
-
-           const result = DuelEngine.calculateOutcome(attacker, target, 100);
-           const winner = result.winnerId === attacker.id ? attacker : target;
-           const loser = result.winnerId === attacker.id ? target : attacker;
-
-           loser.takeDamage(result.damage);
-           this.stats[winner.id].damageDealt += result.damage;
-
-           this.events.unshift(`[Tick ${this.tickCount}] ⚔️ ${attacker.player.name} vs ${target.player.name} in ${zone?.name}`);
-           // Add public combat logs (Hit details)
-           if (result.publicLog && result.publicLog.length > 0) {
-              // Add to events in reverse order so latest is top? Or just unshift.
-              // result.publicLog has hits.
-              // We unshift so latest event is at index 0.
-              // If we have multiple logs, we should unshift them.
-              result.publicLog.forEach(log => this.events.unshift(`> ${log}`));
-           }
-
-           if (loser.hp <= 0) {
-               this.events.unshift(`💀 ${loser.player.name} eliminated by ${winner.player.name}`);
-               this.stats[winner.id].kills++;
-               this.stats[winner.id].actualKills++;
-               this.stats[loser.id].deaths++;
-
-               // Increment Round Kills
-               this.roundKills++;
-
-               // Drop Bomb logic
-               if (this.bomb.carrierId === loser.id) {
-                   loser.hasBomb = false;
-                   this.bomb.drop(loser.currentZoneId);
-                   this.events.unshift(`⚠️ Bomb dropped at ${zone?.name}!`);
-               }
-               // Clean up planter/defuser IDs if they died (already handled by drop, but defuser?)
-               if (this.bomb.defuserId === loser.id) {
-                   this.bomb.abortDefusing();
-               }
-               if (this.bomb.planterId === loser.id) {
-                   this.bomb.abortPlanting();
-               }
-           }
+        sameZoneEnemies.forEach(enemy => {
+            potentialTargets.push({ bot: enemy, distance: 100, isCrossZone: false });
         });
-      }
+
+        // Neighbor Zone Targets
+        currentZone.connections.forEach(connId => {
+            const enemiesInConn = (zoneOccupants[connId] || [])
+                .filter(b => b.side !== attacker.side && b.status === "ALIVE");
+
+            if (enemiesInConn.length > 0) {
+                 const dist = this.map.getDistance(attacker.currentZoneId, connId);
+                 enemiesInConn.forEach(enemy => {
+                     potentialTargets.push({ bot: enemy, distance: dist, isCrossZone: true });
+                 });
+            }
+        });
+
+        if (potentialTargets.length === 0) return;
+
+        // Pick a target
+        // Prefer same zone? Or just random? Random for now.
+        const targetInfo = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
+        const target = targetInfo.bot;
+
+        foughtThisTick.add(attacker.id);
+
+        // Interrupt logic
+        if (this.bomb.planterId === target.id) {
+            this.bomb.abortPlanting();
+            target.aiState = BotAIState.DEFAULT;
+        }
+        if (this.bomb.defuserId === target.id) {
+            this.bomb.abortDefusing();
+            target.aiState = BotAIState.DEFAULT;
+        }
+        if (target.aiState === BotAIState.CHARGING_UTILITY) {
+            target.aiState = BotAIState.DEFAULT;
+            target.isChargingUtility = false;
+            target.utilityChargeTimer = 0;
+        }
+
+        // Shooting adds NOISE
+        if (this.zoneStates[attacker.currentZoneId]) {
+            this.zoneStates[attacker.currentZoneId].noiseLevel += 50;
+        }
+
+        const probs = DuelEngine.getWinProbability(attacker, target, targetInfo.distance, 20);
+        this.stats[attacker.id].expectedKills += probs.initiatorWinRate;
+
+        // Calculate Outcome with crossZone flag
+        // We need to update DuelEngine to accept isCrossZone
+        const result = DuelEngine.calculateOutcome(attacker, target, targetInfo.distance, targetInfo.isCrossZone);
+
+        const winner = result.winnerId === attacker.id ? attacker : target;
+        const loser = result.winnerId === attacker.id ? target : attacker;
+
+        loser.takeDamage(result.damage);
+        this.stats[winner.id].damageDealt += result.damage;
+
+        const locationStr = targetInfo.isCrossZone
+            ? `${currentZone.name} -> ${this.map.getZone(target.currentZoneId)?.name}`
+            : currentZone.name;
+
+        this.events.unshift(`[Tick ${this.tickCount}] ⚔️ ${attacker.player.name} vs ${target.player.name} (${locationStr})`);
+
+        if (result.publicLog && result.publicLog.length > 0) {
+            result.publicLog.forEach(log => this.events.unshift(`> ${log}`));
+        }
+
+        if (loser.hp <= 0) {
+            this.events.unshift(`💀 ${loser.player.name} eliminated by ${winner.player.name}`);
+            this.stats[winner.id].kills++;
+            this.stats[winner.id].actualKills++;
+            this.stats[loser.id].deaths++;
+            this.roundKills++;
+
+            if (this.bomb.carrierId === loser.id) {
+                loser.hasBomb = false;
+                this.bomb.drop(loser.currentZoneId);
+                this.events.unshift(`⚠️ Bomb dropped at ${this.map.getZone(loser.currentZoneId)?.name}!`);
+            }
+            if (this.bomb.defuserId === loser.id) this.bomb.abortDefusing();
+            if (this.bomb.planterId === loser.id) this.bomb.abortPlanting();
+        }
     });
   }
 

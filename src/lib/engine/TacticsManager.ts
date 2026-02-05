@@ -1,10 +1,10 @@
-import { Player } from "@/types";
-import { TeamSide } from "./constants";
 import { Bot } from "./Bot";
 import { GameMap } from "./GameMap";
-import { MapData } from "./types";
 
-export { TeamSide };
+export enum TeamSide {
+  T = "T",
+  CT = "CT",
+}
 
 export type Tactic =
   // T Side

@@ -25,39 +25,53 @@ export function calculateDamage(
   hitGroup: HitGroup,
   target: Bot
 ): { damage: number; armorReduced: boolean } {
-  let damage = weapon.damage;
+  const baseDamage = weapon.damage;
+  let finalDamage = baseDamage;
   let armorReduced = false;
+
+  // Track HS Mult for logging
+  let usedHsMult = weapon.hsMultiplier;
 
   // 1. Hit Group Multiplier
   switch (hitGroup) {
     case "HEAD":
-      damage *= weapon.hsMultiplier;
+      // Handle "N/A" (0.0) -> Fallback to 4.0
+      if (usedHsMult === 0) {
+        usedHsMult = 4.0;
+      }
+      finalDamage *= usedHsMult;
       break;
     case "STOMACH":
-      damage *= 1.25;
+      finalDamage *= 1.25;
       break;
     case "LEGS":
-      damage *= 0.75;
+      finalDamage *= 0.75;
       break;
     case "CHEST":
     default:
-      damage *= 1.0;
+      finalDamage *= 1.0;
       break;
   }
 
   // 2. Armor Reduction
   if (hitGroup === "HEAD") {
     if (target.hasHelmet) {
-      damage *= weapon.armorPen;
+      finalDamage *= weapon.armorPen;
       armorReduced = true;
     }
   } else if (hitGroup === "CHEST" || hitGroup === "STOMACH") {
     if (target.hasVest) {
-      damage *= weapon.armorPen;
+      finalDamage *= weapon.armorPen;
       armorReduced = true;
     }
   }
   // Legs are not armored
 
-  return { damage: Math.floor(damage), armorReduced };
+  // Log Debugging
+  console.log(`[Debug] Weapon: ${weapon.name} | Base: ${baseDamage} | HS Mult: ${usedHsMult} | Armor Pen: ${weapon.armorPen} | Result: ${finalDamage.toFixed(2)}`);
+
+  // Ensure Minimum Damage of 1 and Round Down
+  const resultDamage = Math.max(1, Math.floor(finalDamage));
+
+  return { damage: resultDamage, armorReduced };
 }
