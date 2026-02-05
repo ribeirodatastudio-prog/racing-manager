@@ -89,6 +89,7 @@ export class MatchSimulator {
 
     // Start in Freeze Time
     this.startRound(true);
+    this.broadcast();
   }
 
   public setSpeed(multiplier: number) {
