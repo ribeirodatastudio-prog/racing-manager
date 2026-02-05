@@ -33,6 +33,10 @@ export interface MapData {
     B: string; // Zone ID
   };
   strategies?: StrategyData;
+  postPlantPositions?: {
+    A: string[];
+    B: string[];
+  };
 }
 
 export enum MatchPhase {

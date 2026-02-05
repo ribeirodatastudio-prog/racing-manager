@@ -52,6 +52,7 @@ export class MatchSimulator {
   public roundTimer: number;
   public zoneStates: Record<string, ZoneState> = {};
   private roundKills: number = 0; // Kills this round
+  private bombPlantTick: number = 0;
   private eventManager: EventManager;
 
   // Config
@@ -177,6 +178,7 @@ export class MatchSimulator {
     this.bomb.reset();
     this.roundTimer = this.ROUND_TIME;
     this.roundKills = 0; // Reset kills for the round
+    this.bombPlantTick = 0;
     this.matchState.phase = MatchPhase.PAUSED_FOR_STRATEGY; // Pause for strategy
     this.matchState.phaseTimer = this.FREEZE_TIME;
 
@@ -291,6 +293,14 @@ export class MatchSimulator {
     // 2. Bomb Logic Tick
     this.bomb.tick();
 
+    // Fix: Bomb Timer Safety
+    if (this.bomb.status === BombStatus.PLANTED) {
+         if (this.tickCount - this.bombPlantTick > 405) { // 40.5s safety limit
+             this.bomb.status = BombStatus.DETONATED;
+             this.events.unshift(`⚠️ Bomb timer limit reached (Safety Force).`);
+         }
+    }
+
     // 3. Update Noise Levels (Decay)
     Object.values(this.zoneStates).forEach(state => {
         state.noiseLevel = Math.max(0, state.noiseLevel - 5); // Decay 5 per tick
@@ -318,8 +328,8 @@ export class MatchSimulator {
 
     // 5. Default Strategy Transition (Stall Fix)
     if (tTactic === "DEFAULT") {
-        // Check if round timer < 45s or kills > 0
-        if (this.roundTimer <= 45 || this.roundKills > 0) {
+        // Check if round timer < 55s or kills > 0 (More aggressive transition)
+        if (this.roundTimer <= 55 || this.roundKills > 0) {
             // Check if we already transitioned? (Wait, tacticsManager still has DEFAULT)
             // So we transition now.
             const newTactic = Math.random() > 0.5 ? "EXECUTE_A" : "EXECUTE_B";
@@ -390,7 +400,7 @@ export class MatchSimulator {
       }
 
       // Update Goal / AI State
-      bot.updateGoal(this.map, this.bomb, this.tacticsManager, this.zoneStates, this.tickCount);
+      bot.updateGoal(this.map, this.bomb, this.tacticsManager, this.zoneStates, this.tickCount, this.bots);
 
       // Get Action
       const action = bot.decideAction(this.map);
@@ -427,7 +437,8 @@ export class MatchSimulator {
                const targetId = bot.targetZoneId!;
                const totalInTarget = (zoneOccupancy[targetId]?.T || 0) + (zoneOccupancy[targetId]?.CT || 0);
 
-               if (totalInTarget >= 4) {
+               // Fix: Disable Rerouting if Bomb Planted (Allow flooding)
+               if (totalInTarget >= 4 && this.bomb.status !== BombStatus.PLANTED) {
                    // Zone Crowded - Reroute (Delay)
                    const zone = this.map.getZone(targetId);
                    if (zone) {
@@ -515,6 +526,7 @@ export class MatchSimulator {
         if (this.bomb.updatePlanting()) {
             this.events.unshift(`[Tick ${this.tickCount}] 💣 BOMB PLANTED at ${this.bomb.plantSite === this.map.data.bombSites.A ? "A" : "B"}!`);
             this.events.unshift(`⏱️ 40 seconds to explosion!`);
+            this.bombPlantTick = this.tickCount;
             // Remove bomb from carrier inventory visually (handled by Bomb state)
              const carrier = this.bots.find(b => b.id === this.bomb.planterId);
              if (carrier) carrier.hasBomb = false;

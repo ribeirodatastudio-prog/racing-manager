@@ -12,8 +12,8 @@ export class BuyLogic {
     // 1. Determine Buy Strategy
     if (!strategy) {
       const money = inventory.money;
-      if (money >= 4000) strategy = "FULL";
-      else if (money >= 2000) strategy = "FORCE";
+      if (money >= 3800) strategy = "FULL";
+      else if (money >= 2000 && Math.random() < 0.2) strategy = "FORCE"; // Reduced chance to force to prevent poverty loop
       else strategy = "ECO";
     }
 
@@ -87,6 +87,11 @@ export class BuyLogic {
        }
     }
 
+    // Defuse Kit (CT)
+    if (side === TeamSide.CT && inventory.money >= 400 && Math.random() < 0.8) {
+        this.buyDefuseKit(inventory);
+    }
+
     // Grenades
     this.buyGrenade(inventory, "flashbang");
     this.buyGrenade(inventory, "smoke");
@@ -94,6 +99,11 @@ export class BuyLogic {
 
   private static buyHalf(inventory: PlayerInventory, side: TeamSide) {
     const reserve = 2000;
+
+    // Defuse Kit (CT) - Early check
+    if (side === TeamSide.CT && inventory.money >= 400 + reserve) {
+        this.buyDefuseKit(inventory);
+    }
 
     // Armor (Vest) if > reserve
     if (inventory.money >= EQUIPMENT_COSTS.KEVLAR + reserve) {

@@ -6,6 +6,7 @@ export type HitGroup = "HEAD" | "CHEST" | "STOMACH" | "LEGS";
 export function determineHitGroup(attacker: Bot, distance: number): HitGroup {
   const tech = attacker.player.skills.technical;
   const placement = tech.crosshairPlacement;
+  const weapon = attacker.getEquippedWeapon();
 
   // Close Range Logic (< 400 units)
   if (distance < 400) {
@@ -16,7 +17,15 @@ export function determineHitGroup(attacker: Bot, distance: number): HitGroup {
 
     // Weighted Random based on Crosshair Placement
     // Higher placement = Higher Head chance, Lower Leg chance
-    const headChance = 0.2 + (placement / 200) * 0.6; // 20% to 80%
+    let headChance = 0.2 + (placement / 200) * 0.6; // 20% to 80%
+
+    // Fix 6A: Reduce Headshot RNG for Pistols
+    const isPistol = weapon ? ["Glock", "USP", "P2000", "P250", "Five-SeveN", "Tec-9", "CZ75", "Dual Berettas", "Desert Eagle", "R8"].some(p => weapon.name.includes(p)) : false;
+
+    if (weapon && isPistol && !weapon.name.includes("Desert Eagle")) {
+        headChance *= 0.7; // 30% reduction for pistols
+    }
+
     const legChance = Math.max(0, 0.15 - (placement / 200) * 0.15); // 15% to 0%
 
     // Roll for Head
@@ -31,7 +40,14 @@ export function determineHitGroup(attacker: Bot, distance: number): HitGroup {
 
   // Long Range Logic (Standard)
   // Chance for headshot: 5% base + up to 75% bonus (Max 80% at 200 skill)
-  const headChance = 0.05 + (placement / 200) * 0.75;
+  let headChance = 0.05 + (placement / 200) * 0.75;
+
+  // Fix 6A: Reduce Headshot RNG for Pistols
+  const isPistolLong = weapon ? ["Glock", "USP", "P2000", "P250", "Five-SeveN", "Tec-9", "CZ75", "Dual Berettas", "Desert Eagle", "R8"].some(p => weapon.name.includes(p)) : false;
+
+  if (weapon && isPistolLong && !weapon.name.includes("Desert Eagle")) {
+      headChance *= 0.7;
+  }
 
   if (Math.random() < headChance) return "HEAD";
 

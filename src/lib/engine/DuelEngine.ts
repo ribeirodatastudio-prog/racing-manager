@@ -51,6 +51,11 @@ export class DuelEngine {
   public static calculateOutcome(initiator: Bot, target: Bot, distance: number, isCrossZone: boolean = false, targetCanFire: boolean = true): DuelResult {
     const initiatorResult = this.simulateEngagement(initiator, target, distance, true, isCrossZone);
 
+    // Fix 6B: Peeker's Advantage
+    if (!isCrossZone) {
+      initiatorResult.timeToKill *= 0.95; // 5% faster for initiator
+    }
+
     let targetResult: CombatSimulationResult;
     if (targetCanFire) {
          targetResult = this.simulateEngagement(target, initiator, distance, false, isCrossZone);
@@ -207,9 +212,8 @@ export class DuelEngine {
          // If distance is significantly larger than accurate range, scale penalty.
          const rangeRatio = distance / Math.max(1, weapon.accurateRange);
 
-         // Penalty factor: 1.0 (no extra) to ...?
-         // Example: If ratio is 2 (dist 40, range 20), we add 50% more inaccuracy?
-         const penaltyMultiplier = 1 + (rangeRatio * 0.5); // Arbitrary scaling
+         // Fix 6C: Increase Cross-Zone Penalties
+         const penaltyMultiplier = 1 + (rangeRatio * 0.8); // Increased from 0.5 to 0.8
 
          standingInaccuracy *= penaltyMultiplier;
          log.push(`Cross-Zone Penalty: Inaccuracy x${penaltyMultiplier.toFixed(2)} (Dist: ${distance.toFixed(1)}, Range: ${weapon.accurateRange}, Scoped: No)`);

@@ -59,6 +59,7 @@ export class Bot {
   public splitGroup: string | null = null; // "Short", "Long", etc.
   public stunTimer: number = 0;
   public isEntryFragger: boolean = false;
+  public sprintMultiplier: number = 1.0;
 
   private eventManager: EventManager;
 
@@ -165,6 +166,8 @@ export class Bot {
       const mobility = weapon ? weapon.mobility : 250;
       let speed = baseSpeed * (mobility / 250);
 
+      speed *= this.sprintMultiplier;
+
       if (this.isShiftWalking) {
           speed *= 0.6;
       }
@@ -193,7 +196,7 @@ export class Bot {
       return totalThreat;
   }
 
-  updateGoal(map: GameMap, bomb: Bomb, tacticsManager: TacticsManager, zoneStates: Record<string, { noiseLevel: number }>, currentTick: number = 0) {
+  updateGoal(map: GameMap, bomb: Bomb, tacticsManager: TacticsManager, zoneStates: Record<string, { noiseLevel: number }>, currentTick: number = 0, allBots: Bot[] = []) {
     if (this.status === "DEAD") return;
 
     if (this.combatCooldown > 0) {
@@ -283,18 +286,71 @@ export class Bot {
     // --- CT LOGIC ---
     if (this.side === TeamSide.CT) {
       // 1. Check Bomb Status
-      if (bomb.status === BombStatus.PLANTED && bomb.timer < 14 && !bomb.defuserId) {
-         desiredState = BotAIState.SAVING;
-         desiredGoal = Pathfinder.findFurthestZone(map, bomb.plantSite || this.currentZoneId);
-      }
-      else if (bomb.status === BombStatus.PLANTED) {
-         desiredState = BotAIState.DEFUSING;
-         desiredGoal = bomb.plantSite || null;
-         if (this.currentZoneId === desiredGoal) {
-             if (!bomb.defuserId || bomb.defuserId === this.id) {
-                 // Defuse
-             } else {
-                 desiredState = BotAIState.DEFAULT;
+      this.sprintMultiplier = 1.0;
+
+      if (bomb.status === BombStatus.PLANTED) {
+         this.isShiftWalking = false; // Fix 3: Sprint
+         if (this.aiState === BotAIState.DEFUSING || this.aiState === BotAIState.DEFAULT || this.aiState === BotAIState.WAITING_FOR_SPLIT) {
+             this.sprintMultiplier = 1.2; // Fix 3: Boost
+         }
+
+         const defuseTime = this.player.inventory?.hasDefuseKit ? 50 : 100;
+         const timeRemaining = bomb.timer;
+         const distanceToSite = map.getDistance(this.currentZoneId, bomb.plantSite || "");
+         // Estimate travel time (ticks) = Distance / (SpeedPerTick). SpeedPerTick = 40 * 1.2 * 0.1 = 4.8.
+         const speedPerTick = 40 * 1.2 * 0.1;
+         const travelTime = Math.ceil(distanceToSite / speedPerTick);
+
+         if (travelTime + defuseTime > timeRemaining && !bomb.defuserId && bomb.defuserId !== this.id) {
+             // Fix 4: Give up if impossible
+             desiredState = BotAIState.SAVING;
+             desiredGoal = Pathfinder.findFurthestZone(map, bomb.plantSite || this.currentZoneId);
+         }
+         else {
+             desiredState = BotAIState.DEFUSING;
+             desiredGoal = bomb.plantSite || null;
+
+             // Fix 2: Retake Coordination
+             if (desiredGoal && allBots.length > 0) {
+                 const siteId = desiredGoal;
+                 const myDist = map.getDistance(this.currentZoneId, siteId);
+
+                 const retakingCTs = allBots.filter(b =>
+                     b.side === TeamSide.CT &&
+                     b.status === "ALIVE" &&
+                     b.goalZoneId === siteId &&
+                     (b.aiState === BotAIState.DEFUSING || b.aiState === BotAIState.WAITING_FOR_SPLIT)
+                 ).length;
+
+                 if (retakingCTs < 2 && myDist < 300 && myDist > 50) {
+                      desiredState = BotAIState.WAITING_FOR_SPLIT;
+                      desiredGoal = this.currentZoneId;
+                 }
+             }
+
+             // Fix 2B: Utility Usage
+             if ((desiredState === BotAIState.DEFUSING || desiredState === BotAIState.WAITING_FOR_SPLIT) && desiredGoal) {
+                  const dist = map.getDistance(this.currentZoneId, desiredGoal);
+                  if (dist < 400 && !this.hasThrownEntryUtility && this.utilityCooldown <= 0) {
+                       const nextUtil = this.getNextGrenadeType();
+                       if (nextUtil) {
+                           this.activeUtility = nextUtil;
+                           const utilitySkill = this.player.skills.technical.utility;
+                           const chargeTimeMs = 3000 - (utilitySkill * 10);
+                           this.utilityChargeTimer = Math.max(1, Math.ceil(chargeTimeMs / 100));
+                           this.isChargingUtility = true;
+                           this.aiState = BotAIState.CHARGING_UTILITY;
+                           return;
+                      }
+                  }
+             }
+
+             if (this.currentZoneId === desiredGoal) {
+                 if (!bomb.defuserId || bomb.defuserId === this.id) {
+                     // Defuse
+                 } else {
+                     desiredState = BotAIState.HOLDING_ANGLE;
+                 }
              }
          }
       }
@@ -398,8 +454,30 @@ export class Bot {
           }
       }
       else if (bomb.status === BombStatus.PLANTED) {
-          desiredState = BotAIState.DEFAULT;
-          desiredGoal = bomb.plantSite || this.currentZoneId;
+          // Fix 5: Post-Plant Positioning
+          if (map.data.postPlantPositions && bomb.plantSite) {
+               const siteKey = bomb.plantSite === map.data.bombSites.A ? "A" : "B";
+               const spots = map.data.postPlantPositions[siteKey];
+               if (spots && spots.length > 0) {
+                   let bestSpot = spots[0];
+                   let minDist = Infinity;
+                   spots.forEach(spot => {
+                       const d = map.getDistance(this.currentZoneId, spot);
+                       if (d < minDist) {
+                           minDist = d;
+                           bestSpot = spot;
+                       }
+                   });
+                   desiredGoal = bestSpot;
+                   desiredState = BotAIState.HOLDING_ANGLE;
+               } else {
+                   desiredGoal = bomb.plantSite;
+                   desiredState = BotAIState.HOLDING_ANGLE;
+               }
+          } else {
+               desiredState = BotAIState.HOLDING_ANGLE;
+               desiredGoal = bomb.plantSite || this.currentZoneId;
+          }
       }
       else {
           desiredState = BotAIState.DEFAULT;

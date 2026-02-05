@@ -23,6 +23,10 @@ export const DUST2_MAP: MapData = {
       ]
     }
   },
+  postPlantPositions: {
+    A: ["ct_spawn", "a_ramp", "long_doors"],
+    B: ["b_window", "b_doors", "mid_doors"]
+  },
   zones: [
     // T Side
     {
