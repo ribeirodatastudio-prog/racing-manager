@@ -52,6 +52,9 @@ export class Bot {
   public isShiftWalking: boolean = false;
   public isChargingUtility: boolean = false;
   public utilityChargeTimer: number = 0;
+  public utilityCooldown: number = 0;
+  public activeUtility: string | null = null;
+  public hasThrownEntryUtility: boolean = false;
   public stealthMode: boolean = false;
   public splitGroup: string | null = null; // "Short", "Long", etc.
   public stunTimer: number = 0;
@@ -93,8 +96,8 @@ export class Bot {
         money: ECONOMY.START_MONEY,
         hasKevlar: false,
         hasHelmet: false,
-        hasKit: false,
-        utilities: []
+        hasDefuseKit: false,
+        grenades: []
       };
     }
 
@@ -197,6 +200,10 @@ export class Bot {
       this.combatCooldown--;
     }
 
+    if (this.utilityCooldown > 0) {
+      this.utilityCooldown--;
+    }
+
     // Reset transient flags
     this.isEntryFragger = false;
 
@@ -236,13 +243,36 @@ export class Bot {
          if (this.goalZoneId && (this.goalZoneId === map.data.bombSites.A || this.goalZoneId === map.data.bombSites.B)) {
              const zone = map.getZone(this.currentZoneId);
              if (zone && zone.connections.includes(this.goalZoneId)) {
-                 // At entry zone, charging utility
-                 const utilitySkill = this.player.skills.technical.utility;
-                 const chargeTimeMs = 3000 - (utilitySkill * 10);
-                 this.utilityChargeTimer = Math.max(1, Math.ceil(chargeTimeMs / 500));
-                 this.isChargingUtility = true;
-                 this.aiState = BotAIState.CHARGING_UTILITY;
-                 return;
+                 // At entry zone
+                 // Check if we can/should throw utility
+                 if (this.utilityCooldown <= 0) {
+                     const role = tacticsManager.getRole(this.id);
+                     const isSupport = role === "Support";
+
+                     // If Support, always try to throw if inventory exists.
+                     // If not Support, throw only if haven't thrown yet.
+                     if (isSupport || !this.hasThrownEntryUtility) {
+                         const nextUtil = this.getNextGrenadeType();
+                         if (nextUtil) {
+                             // Start Charging
+                             this.activeUtility = nextUtil;
+                             const utilitySkill = this.player.skills.technical.utility;
+                             const chargeTimeMs = 3000 - (utilitySkill * 10);
+                             this.utilityChargeTimer = Math.max(1, Math.ceil(chargeTimeMs / 500));
+                             this.isChargingUtility = true;
+                             this.aiState = BotAIState.CHARGING_UTILITY;
+                             return;
+                         }
+                     }
+                 } else {
+                     // Cooldown active.
+                     // If Support and have more nades -> Wait.
+                     const role = tacticsManager.getRole(this.id);
+                     if (role === "Support" && (this.player.inventory?.grenades.length ?? 0) > 0) {
+                         this.aiState = BotAIState.HOLDING_ANGLE;
+                         return;
+                     }
+                 }
              }
          }
     }
@@ -490,5 +520,17 @@ export class Bot {
       this.hp = 0;
       this.status = "DEAD";
     }
+  }
+
+  private getNextGrenadeType(): string | null {
+      const g = this.player.inventory?.grenades || [];
+      if (g.length === 0) return null;
+      // Priority: Smoke > Molotov > Flash > HE
+      if (g.includes("smoke")) return "smoke";
+      if (g.includes("molotov")) return "molotov";
+      if (g.includes("incendiary")) return "incendiary";
+      if (g.includes("flashbang")) return "flashbang";
+      if (g.includes("he")) return "he";
+      return g[0];
   }
 }

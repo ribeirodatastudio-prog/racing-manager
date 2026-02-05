@@ -1,4 +1,4 @@
-import { ECONOMY, TeamSide } from "./constants";
+import { ECONOMY, TeamSide, Weapon, WEAPONS } from "./constants";
 import { MatchState, RoundEndReason } from "./types";
 
 export class EconomySystem {
@@ -10,7 +10,8 @@ export class EconomySystem {
     winner: TeamSide,
     reason: RoundEndReason,
     lossBonusLevel: number, // 0-4
-    bombPlanted: boolean
+    bombPlanted: boolean,
+    survived: boolean = false
   ): number {
     if (side === winner) {
       // Win Rewards
@@ -28,6 +29,13 @@ export class EconomySystem {
       }
     } else {
       // Loss Rewards
+
+      // T-Side Save Penalty:
+      // If a T-side player survives a round loss without the bomb being planted, they receive $0.
+      if (side === TeamSide.T && survived && !bombPlanted) {
+        return 0;
+      }
+
       let income = ECONOMY.LOSS_BONUS_START + (lossBonusLevel * ECONOMY.LOSS_BONUS_INCREMENT);
       if (income > ECONOMY.LOSS_BONUS_MAX) income = ECONOMY.LOSS_BONUS_MAX;
 
@@ -63,5 +71,9 @@ export class EconomySystem {
    */
   public static getPistolRoundLossLevel(): number {
     return 1; // Corresponds to $1900
+  }
+
+  public static getKillReward(weapon: Weapon): number {
+      return weapon.killReward;
   }
 }

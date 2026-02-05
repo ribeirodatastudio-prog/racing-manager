@@ -65,6 +65,6 @@ export interface PlayerInventory {
   secondaryWeapon?: string; // Weapon ID
   hasKevlar: boolean;
   hasHelmet: boolean;
-  hasKit: boolean; // CT only
-  utilities: string[]; // List of grenades/utils
+  hasDefuseKit: boolean; // Renamed from hasKit
+  grenades: string[]; // Renamed from utilities
 }

@@ -59,6 +59,10 @@ export class TacticsManager {
     return this.strategies[side].stage;
   }
 
+  public getRole(botId: string): string | undefined {
+      return this.assignments[botId]?.role;
+  }
+
   /**
    * Initializes or updates assignments for the round based on current tactics.
    * Should be called at round start or tactic change.
@@ -129,6 +133,16 @@ export class TacticsManager {
            } else {
               bots.forEach(b => this.assignments[b.id] = { targetZoneId: sites.B });
            }
+      }
+
+      // Assign Support Role to T with highest Utility skill
+      if (bots.length > 0) {
+          const supportBot = bots.reduce((prev, curr) =>
+              (curr.player.skills.technical.utility > prev.player.skills.technical.utility) ? curr : prev
+          );
+          if (this.assignments[supportBot.id]) {
+              this.assignments[supportBot.id].role = "Support";
+          }
       }
   }
 
