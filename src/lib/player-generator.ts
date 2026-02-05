@@ -1,62 +1,61 @@
-import { Player, TechnicalSkills, MentalSkills, PhysicalSkills } from "@/types";
+import { Player } from "@/types";
+import { v4 as uuidv4 } from "uuid";
 
-const FIRST_NAMES = ["James", "John", "Robert", "Michael", "William", "David", "Richard", "Joseph", "Thomas", "Charles", "Daniel", "Matthew", "Anthony", "Donald", "Mark", "Paul", "Steven", "Andrew", "Kenneth", "Joshua", "Kevin", "Brian", "George", "Edward", "Ronald", "Timothy", "Jason", "Jeffrey", "Ryan", "Jacob", "Gary", "Nicholas", "Eric", "Jonathan", "Stephen", "Larry", "Justin", "Scott", "Brandon", "Benjamin"];
-const LAST_NAMES = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez", "Hernandez", "Lopez", "Gonzalez", "Wilson", "Anderson", "Thomas", "Taylor", "Moore", "Jackson", "Martin", "Lee", "Perez", "Thompson", "White", "Harris", "Sanchez", "Clark", "Ramirez", "Lewis", "Robinson", "Walker", "Young", "Allen", "King", "Wright", "Scott", "Torres", "Nguyen", "Hill", "Flores"];
-const NICKNAMES = ["Ace", "Beast", "Cypher", "Dash", "Echo", "Falcon", "Ghost", "Hawk", "Ice", "Joker", "King", "Lion", "Maverick", "Neo", "Omen", "Phantom", "Quantum", "Raven", "Shadow", "Titan", "Viper", "Wolf", "Xeno", "Yeti", "Zeus", "Niko", "S1mple", "Zywoo", "Device", "Twistzz", "Ropz", "Rain", "Karrigan", "Apex", "Sh1ro", "Ax1le", "H1n", "Grim", "Floppy", "Elige"];
-const NATIONALITIES = ["USA", "Canada", "UK", "France", "Germany", "Sweden", "Denmark", "Norway", "Finland", "Poland", "Russia", "Ukraine", "Brazil", "Argentina", "Australia", "China"];
-const ROLES = ["Rifler", "AWPer", "Entry Fragger", "Support", "IGL", "Lurker"];
+// Helper to get random integer
+function getRandomInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
 
-const getRandomItem = <T>(arr: T[]): T => arr[Math.floor(Math.random() * arr.length)];
-const getRandomInt = (min: number, max: number): number => Math.floor(Math.random() * (max - min + 1)) + min;
+const ROLES = ["Entry Fragger", "Support", "IGL", "Lurker", "Star AWPer"];
+const COUNTRIES = ["Sweden", "France", "USA", "Russia", "Brazil", "Denmark", "Ukraine", "Germany", "Poland", "Canada"];
+const FIRST_NAMES = ["Olof", "Kenny", "Jordan", "Oleksandr", "Gabriel", "Nicolai", "Peter", "Nikola", "Marcelo", "Ladislav"];
+const LAST_NAMES = ["Meister", "S", "Gilbert", "Kostyliev", "Toledo", "Reedtz", "Rasmussen", "Kovac", "David", "Kovacs"];
 
-const generateSkills = (): { technical: TechnicalSkills; mental: MentalSkills; physical: PhysicalSkills } => {
-  return {
-    technical: {
-      shooting: getRandomInt(60, 199),
-      crosshairPlacement: getRandomInt(60, 199),
-      sprayControl: getRandomInt(60, 199),
-      utilityUsage: getRandomInt(60, 199),
-      firstBulletPrecision: getRandomInt(60, 199),
-      movement: getRandomInt(60, 199),
-      clutching: getRandomInt(60, 199),
-    },
-    mental: {
-      positioning: getRandomInt(60, 199),
-      adaptability: getRandomInt(60, 199),
-      composure: getRandomInt(60, 199),
-      communication: getRandomInt(60, 199),
-      gameSense: getRandomInt(60, 199),
-      aggression: getRandomInt(30, 200), // Wider range for aggression
-    },
-    physical: {
-      reactionTime: getRandomInt(60, 199),
-      dexterity: getRandomInt(60, 199),
-      consistency: getRandomInt(60, 199),
-      injuryResistance: getRandomInt(60, 199),
-    },
-  };
-};
+export function generatePlayer(id: string = uuidv4()): Player {
+  const role = ROLES[Math.floor(Math.random() * ROLES.length)];
+  const name = `${FIRST_NAMES[Math.floor(Math.random() * FIRST_NAMES.length)]} ${LAST_NAMES[Math.floor(Math.random() * LAST_NAMES.length)]}`;
 
-export const generateRandomPlayer = (id: string, suffix?: string): Player => {
-  const firstName = getRandomItem(FIRST_NAMES);
-  const lastName = getRandomItem(LAST_NAMES);
-  const nickname = getRandomItem(NICKNAMES);
-  const name = `${firstName} '${nickname}' ${lastName}${suffix ? ` (${suffix})` : ''}`;
+  const utilityVal = getRandomInt(60, 199);
 
   return {
     id,
     name,
-    age: getRandomInt(16, 35),
-    nationality: getRandomItem(NATIONALITIES),
-    role: getRandomItem(ROLES),
-    skills: generateSkills(),
+    age: getRandomInt(18, 28),
+    nationality: COUNTRIES[Math.floor(Math.random() * COUNTRIES.length)],
+    role,
+    skills: {
+      technical: {
+        shooting: getRandomInt(60, 199),
+        crosshairPlacement: getRandomInt(60, 199),
+        sprayControl: getRandomInt(60, 199),
+        utilityUsage: utilityVal,
+        utility: utilityVal, // Alias
+        firstBulletPrecision: getRandomInt(60, 199),
+        movement: getRandomInt(60, 199),
+        clutching: getRandomInt(60, 199),
+      },
+      mental: {
+        positioning: getRandomInt(60, 199),
+        adaptability: getRandomInt(60, 199),
+        composure: getRandomInt(60, 199),
+        communication: getRandomInt(60, 199),
+        gameSense: getRandomInt(60, 199),
+        aggression: getRandomInt(60, 199),
+      },
+      physical: {
+        reactionTime: getRandomInt(60, 199),
+        dexterity: getRandomInt(60, 199),
+        consistency: getRandomInt(60, 199),
+        injuryResistance: getRandomInt(60, 199),
+      },
+    },
   };
-};
+}
 
-export const generateTeam = (count: number, startId: number, suffix?: string): Player[] => {
+export function generateTeam(count: number, startId: number): Player[] {
   const team: Player[] = [];
   for (let i = 0; i < count; i++) {
-    team.push(generateRandomPlayer(`p${startId + i}`, suffix));
+    team.push(generatePlayer(`player-${startId + i}`));
   }
   return team;
-};
+}

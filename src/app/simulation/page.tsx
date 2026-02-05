@@ -23,7 +23,7 @@ export default function SimulationPage() {
   const [gameState, setGameState] = useState<SimulationState | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [tTactic, setTTactic] = useState<Tactic>("DEFAULT");
-  const [ctTactic, setCtTactic] = useState<Tactic>("DEFAULT");
+  const [ctTactic, setCtTactic] = useState<Tactic>("STANDARD");
 
   // Initial Roster Generation
   useEffect(() => {
@@ -53,7 +53,8 @@ export default function SimulationPage() {
       stats: sim.stats,
       matchState: sim.matchState,
       bombState: sim.bomb,
-      roundTimer: sim.roundTimer
+      roundTimer: sim.roundTimer,
+      zoneStates: sim.zoneStates
     });
 
     simulatorRef.current = sim;
@@ -107,7 +108,8 @@ export default function SimulationPage() {
         stats: simulatorRef.current.stats,
         matchState: simulatorRef.current.matchState,
         bombState: simulatorRef.current.bomb,
-        roundTimer: simulatorRef.current.roundTimer
+        roundTimer: simulatorRef.current.roundTimer,
+        zoneStates: simulatorRef.current.zoneStates
       });
     }
   };
