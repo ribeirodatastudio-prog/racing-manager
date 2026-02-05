@@ -48,9 +48,23 @@ export class DuelEngine {
   /**
    * Calculates the outcome of a duel between an initiator (Attacker) and a target (Defender).
    */
-  public static calculateOutcome(initiator: Bot, target: Bot, distance: number, isCrossZone: boolean = false): DuelResult {
+  public static calculateOutcome(initiator: Bot, target: Bot, distance: number, isCrossZone: boolean = false, targetCanFire: boolean = true): DuelResult {
     const initiatorResult = this.simulateEngagement(initiator, target, distance, true, isCrossZone);
-    const targetResult = this.simulateEngagement(target, initiator, distance, false, isCrossZone);
+
+    let targetResult: CombatSimulationResult;
+    if (targetCanFire) {
+         targetResult = this.simulateEngagement(target, initiator, distance, false, isCrossZone);
+    } else {
+         targetResult = {
+             success: false,
+             timeToKill: Infinity,
+             bulletsFired: 0,
+             isHeadshot: false,
+             damageDealt: 0,
+             log: ["Target cannot return fire (Busy/Engaged)"],
+             publicLog: []
+         };
+    }
 
     // Determine Winner (Who hits first)
     let winnerId: string;
@@ -141,12 +155,24 @@ export class DuelEngine {
 
     log.push(`Simulating ${shooter.player.name} vs ${target.player.name} (Dist: ${distance.toFixed(1)}) with ${weapon.name}`);
 
+    // Modifiers
+    let precision = tech.firstBulletPrecision;
+    if (shooter.isEntryFragger) {
+        precision *= 0.7;
+        log.push("Entry Frag Penalty applied (-30% Precision)");
+    }
+
+    const reactionTime = shooter.stunTimer > 0 ? 0 : physical.reactionTime;
+    if (shooter.stunTimer > 0) {
+        log.push("Stunned! Reaction Time set to 0.");
+    }
+
     // Difficulty Calculation
     const difficulty = this.BASE_DIFFICULTY - tech.crosshairPlacement + targetMental.positioning;
     // log.push(`Difficulty: ${difficulty}`);
 
     // Time Factor
-    let timeToHit = this.BASE_TIME_TO_HIT - physical.reactionTime;
+    let timeToHit = this.BASE_TIME_TO_HIT - reactionTime;
     const isEntryFragging = isInitiator && mental.aggression > this.ENTRY_FRAG_AGGRESSION_THRESHOLD;
 
     if (isEntryFragging) {
@@ -160,7 +186,7 @@ export class DuelEngine {
     // log.push(`Base TimeToHit: ${timeToHit.toFixed(2)}ms`);
 
     // Inaccuracy Setup
-    const baseChance = tech.firstBulletPrecision / 200;
+    const baseChance = precision / 200;
     let standingInaccuracy = weapon.standingInaccuracy;
 
     // Range Penalty

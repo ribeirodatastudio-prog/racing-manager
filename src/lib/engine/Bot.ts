@@ -54,6 +54,8 @@ export class Bot {
   public utilityChargeTimer: number = 0;
   public stealthMode: boolean = false;
   public splitGroup: string | null = null; // "Short", "Long", etc.
+  public stunTimer: number = 0;
+  public isEntryFragger: boolean = false;
 
   private eventManager: EventManager;
 
@@ -193,6 +195,13 @@ export class Bot {
 
     if (this.combatCooldown > 0) {
       this.combatCooldown--;
+    }
+
+    // Reset transient flags
+    this.isEntryFragger = false;
+
+    if (this.stunTimer > 0) {
+      this.stunTimer--;
     }
 
     if (this.reactionTimer > 0) {

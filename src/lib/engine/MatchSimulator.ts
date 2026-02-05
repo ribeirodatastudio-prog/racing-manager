@@ -320,9 +320,30 @@ export class MatchSimulator {
     }
 
 
+    // Pre-calculate zone occupancy for Capacity Logic
+    const zoneOccupancy: Record<string, { T: number, CT: number }> = {};
+    this.bots.forEach(b => {
+        if (b.status === "DEAD") return;
+        if (!zoneOccupancy[b.currentZoneId]) zoneOccupancy[b.currentZoneId] = { T: 0, CT: 0 };
+        zoneOccupancy[b.currentZoneId][b.side]++;
+    });
+
     // 6. Bots Decision
     this.bots.forEach(bot => {
       if (bot.status === "DEAD") return;
+
+      // Check for Utility Finish (Flashbang Trigger)
+      if (bot.isChargingUtility && bot.utilityChargeTimer === 1) {
+           // Utility about to deploy. Stun enemies in goal zone.
+           if (bot.goalZoneId) {
+               this.events.unshift(`[Tick ${this.tickCount}] 🧨 ${bot.player.name} throws utility into ${this.map.getZone(bot.goalZoneId)?.name}!`);
+               this.bots.forEach(victim => {
+                   if (victim.status === "ALIVE" && victim.side !== bot.side && victim.currentZoneId === bot.goalZoneId) {
+                       victim.stunTimer = 3;
+                   }
+               });
+           }
+      }
 
       // Add Noise
       const noise = bot.makeNoise();
@@ -347,6 +368,7 @@ export class MatchSimulator {
 
         // Handle instant move (fallback) or granular move
         if (distance === Infinity || distance <= 0) {
+           // Instant move logic (should respect capacity? Unlikely to happen in simulation but safe to skip for now)
            bot.currentZoneId = bot.targetZoneId!;
            bot.targetZoneId = null;
            bot.movementProgress = 0;
@@ -363,7 +385,57 @@ export class MatchSimulator {
            bot.movementProgress += moveAmount;
 
            if (bot.movementProgress >= distance) {
-               // Arrived
+               // Arrived - Check Zone Capacity
+               const targetId = bot.targetZoneId!;
+               const totalInTarget = (zoneOccupancy[targetId]?.T || 0) + (zoneOccupancy[targetId]?.CT || 0);
+
+               if (totalInTarget >= 4) {
+                   // Zone Crowded - Reroute (Delay)
+                   const zone = this.map.getZone(targetId);
+                   if (zone) {
+                       // Find a neighbor of the TARGET that is ALSO connected to CURRENT zone (valid move)
+                       // Or just find a neighbor of CURRENT zone?
+                       // User said "spill over into adjacent support positions". Support positions are usually adjacent to the target site.
+                       // But we must be able to walk there.
+                       // Try to find a neighbor of Target that is accessible from Current.
+                       const validNeighbor = zone.connections.find(n => {
+                           const count = (zoneOccupancy[n]?.T || 0) + (zoneOccupancy[n]?.CT || 0);
+                           const dist = this.map.getDistance(bot.currentZoneId, n);
+                           return count < 4 && dist !== Infinity;
+                       });
+
+                       if (validNeighbor) {
+                           this.events.unshift(`[Tick ${this.tickCount}] 🚧 ${bot.player.name} rerouting from crowded ${zone.name} to ${this.map.getZone(validNeighbor)?.name}`);
+                           bot.targetZoneId = validNeighbor;
+                           bot.movementProgress = 0; // Reset progress (Walking to neighbor)
+                           return;
+                       }
+                   }
+                   // If no accessible neighbor found, stay put (wait at border)
+                   // We clamp progress to just before arrival to simulate "blocked"
+                   bot.movementProgress = Math.min(bot.movementProgress, distance - 0.1);
+                   return;
+               }
+
+               // Capacity OK - Proceed to Enter
+
+               // Entry Frag Logic
+               const destOccupancy = zoneOccupancy[targetId] || { T: 0, CT: 0 };
+               const enemies = bot.side === TeamSide.T ? destOccupancy.CT : destOccupancy.T;
+               const friends = bot.side === TeamSide.T ? destOccupancy.T : destOccupancy.CT;
+
+               if (enemies > 0 && friends === 0) {
+                   bot.isEntryFragger = true;
+                   this.events.unshift(`[Tick ${this.tickCount}] 💥 ${bot.player.name} ENTRY FRAGGING into ${this.map.getZone(targetId)?.name}! (-30% Precision)`);
+               }
+
+               // Update Occupancy for subsequent bots
+               if (!zoneOccupancy[targetId]) zoneOccupancy[targetId] = { T: 0, CT: 0 };
+               zoneOccupancy[targetId][bot.side]++;
+               if (zoneOccupancy[bot.currentZoneId]) {
+                   zoneOccupancy[bot.currentZoneId][bot.side]--;
+               }
+
                bot.currentZoneId = bot.targetZoneId!;
                bot.targetZoneId = null;
                bot.movementProgress = 0;
@@ -431,7 +503,7 @@ export class MatchSimulator {
       zoneOccupants[bot.currentZoneId].push(bot);
     });
 
-    const foughtThisTick = new Set<string>();
+    const hasFired = new Set<string>(); // Track bots who have fired their weapon this tick
     const livingBots = this.bots.filter(b => b.status === "ALIVE");
 
     // Randomize turn order
@@ -439,7 +511,7 @@ export class MatchSimulator {
 
     attackers.forEach(attacker => {
         if (attacker.status === "DEAD") return;
-        if (foughtThisTick.has(attacker.id)) return;
+        if (hasFired.has(attacker.id)) return; // Attacker already fired
 
         // Skip if busy (planting/defusing/charging)
         // Verify against bomb state
@@ -484,7 +556,30 @@ export class MatchSimulator {
         const targetInfo = potentialTargets[Math.floor(Math.random() * potentialTargets.length)];
         const target = targetInfo.bot;
 
-        foughtThisTick.add(attacker.id);
+        // Check Engagement Queue / Firing Status
+        const targetBusy = hasFired.has(target.id);
+
+        // Mark Attacker as having fired
+        hasFired.add(attacker.id);
+
+        // If target is NOT busy, they return fire.
+        if (!targetBusy) {
+            hasFired.add(target.id);
+        } else {
+             // Target cannot return fire (One-way duel)
+             // We allow the duel, but target deals 0 damage / skips their turn in DuelEngine?
+             // Actually DuelEngine simulates both sides.
+             // We need to pass a flag to DuelEngine to disable target's attack?
+             // Or just handle it here?
+             // DuelEngine.calculateOutcome calls simulateEngagement for both.
+             // We can modify DuelEngine to accept 'targetCanFire' boolean?
+             // Or just log it and accept that DuelEngine might simulate a return fire that we ignore?
+             // The cleanest way is to add `targetCanFire` to calculateOutcome.
+             // But I can't modify DuelEngine signature easily without checking everywhere.
+             // Wait, I *can* modify DuelEngine.
+             // Let's modify DuelEngine signature in a moment.
+             // For now, let's assume I will.
+        }
 
         // Notify Enemy Spotted (Both ways)
         // Only if not already spotted recently? Bot handles duplicates via timestamp logic usually, but here we spam it.
@@ -529,9 +624,10 @@ export class MatchSimulator {
         const probs = DuelEngine.getWinProbability(attacker, target, targetInfo.distance, 20);
         this.stats[attacker.id].expectedKills += probs.initiatorWinRate;
 
-        // Calculate Outcome with crossZone flag
-        // We need to update DuelEngine to accept isCrossZone
-        const result = DuelEngine.calculateOutcome(attacker, target, targetInfo.distance, targetInfo.isCrossZone);
+        // Calculate Outcome
+        // If targetBusy is true, target cannot return fire.
+        // I need to update DuelEngine.calculateOutcome to support this.
+        const result = DuelEngine.calculateOutcome(attacker, target, targetInfo.distance, targetInfo.isCrossZone, !targetBusy);
 
         const winner = result.winnerId === attacker.id ? attacker : target;
         const loser = result.winnerId === attacker.id ? target : attacker;
