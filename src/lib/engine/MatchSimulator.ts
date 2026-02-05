@@ -54,6 +54,10 @@ export class MatchSimulator {
   private roundKills: number = 0; // Kills this round
   private eventManager: EventManager;
 
+  public get eventManagerInstance(): EventManager {
+    return this.eventManager;
+  }
+
   // Config
   private speedMultiplier: number = 1.0;
   private baseTickRate: number = 100; // ms
@@ -252,7 +256,7 @@ export class MatchSimulator {
     }, delay);
   }
 
-  private tick() {
+  public tick() {
     if (this.matchState.phase === MatchPhase.PAUSED_FOR_STRATEGY) {
       this.broadcast();
       return;

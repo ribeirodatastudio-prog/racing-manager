@@ -24,7 +24,7 @@ export interface Weapon {
 export const WEAPONS: Record<string, Weapon> = {
   // Pistols
   "glock-18": { name: "Glock-18", cost: 200, killReward: 300, type: WeaponType.PISTOL, team: TeamSide.T },
-  "usp-s": { name: "USP-S", cost: 200, killReward: 300, type: WeaponType.PISTOL, team: TeamSide.CT },
+  "usp-s": { name: "USP-S (silencer)", cost: 200, killReward: 300, type: WeaponType.PISTOL, team: TeamSide.CT },
   "p2000": { name: "P2000", cost: 200, killReward: 300, type: WeaponType.PISTOL, team: TeamSide.CT },
   "dual_berettas": { name: "Dual Berettas", cost: 300, killReward: 300, type: WeaponType.PISTOL },
   "p250": { name: "P250", cost: 300, killReward: 300, type: WeaponType.PISTOL },
@@ -56,7 +56,7 @@ export const WEAPONS: Record<string, Weapon> = {
   "famas": { name: "FAMAS", cost: 1950, killReward: 300, type: WeaponType.RIFLE, team: TeamSide.CT },
   "ak-47": { name: "AK-47", cost: 2700, killReward: 300, type: WeaponType.RIFLE, team: TeamSide.T },
   "m4a4": { name: "M4A4", cost: 2900, killReward: 300, type: WeaponType.RIFLE, team: TeamSide.CT },
-  "m4a1-s": { name: "M4A1-S", cost: 2900, killReward: 300, type: WeaponType.RIFLE, team: TeamSide.CT },
+  "m4a1-s": { name: "M4A1-S (silencer)", cost: 2900, killReward: 300, type: WeaponType.RIFLE, team: TeamSide.CT },
   "sg_553": { name: "SG 553", cost: 3000, killReward: 300, type: WeaponType.RIFLE, team: TeamSide.T },
   "aug": { name: "AUG", cost: 3300, killReward: 300, type: WeaponType.RIFLE, team: TeamSide.CT },
   "ssg_08": { name: "SSG 08", cost: 1700, killReward: 300, type: WeaponType.SNIPER },
