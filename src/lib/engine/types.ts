@@ -81,3 +81,11 @@ export interface RoundHistory {
   reason: RoundEndReason;
   endTick: number;
 }
+
+export interface DroppedWeapon {
+  id: string; // Unique ID
+  weaponId: string; // "ak-47", etc.
+  zoneId: string;
+  x: number; // For visualization within the zone
+  y: number;
+}

@@ -169,7 +169,7 @@ export default function PracticePage() {
 
       if (gameState.matchState.phase === MatchPhase.PAUSED_FOR_STRATEGY) {
           // Apply current tactic state
-          simulatorRef.current.applyStrategies("FULL", tacticT, "FULL", tacticCT);
+          simulatorRef.current.applyStrategies("FULL", tacticT, "FULL", tacticCT, {});
       }
   }, [gameState?.matchState.phase, tacticT, tacticCT]);
 
@@ -278,6 +278,7 @@ export default function PracticePage() {
                       <MapVisualizer
                         map={simulatorRef.current.map}
                         bots={gameState?.bots || []}
+                        zoneStates={gameState?.zoneStates}
                         selectedBotId={selectedPlayerId}
                       />
                   ) : (

@@ -7,7 +7,7 @@ import { Player } from "@/types";
 import { MapVisualizer } from "@/components/simulation/MapVisualizer";
 import { SimulationControls } from "@/components/simulation/SimulationControls";
 import { Scoreboard } from "@/components/simulation/Scoreboard";
-import { StrategyPopup } from "@/components/simulation/StrategyPopup";
+import { SituationRoom } from "@/components/simulation/SituationRoom";
 import { Tactic, TeamSide } from "@/lib/engine/TacticsManager";
 import { MatchPhase, BuyStrategy } from "@/lib/engine/types";
 import { RoundResultOverlay } from "@/components/simulation/RoundResultOverlay";
@@ -126,9 +126,9 @@ export default function SimulationPage() {
     else setCtTactic(tactic);
   };
 
-  const handleStrategyConfirm = (tBuy: BuyStrategy, tTactic: Tactic, ctBuy: BuyStrategy, ctTactic: Tactic) => {
+  const handleStrategyConfirm = (tBuy: BuyStrategy, tTactic: Tactic, ctBuy: BuyStrategy, ctTactic: Tactic, roleOverrides: Record<string, string>) => {
     if (simulatorRef.current) {
-      simulatorRef.current.applyStrategies(tBuy, tTactic, ctBuy, ctTactic);
+      simulatorRef.current.applyStrategies(tBuy, tTactic, ctBuy, ctTactic, roleOverrides);
       setTTactic(tTactic);
       setCtTactic(ctTactic);
     }
@@ -233,11 +233,13 @@ export default function SimulationPage() {
           </div>
         </header>
 
-        <StrategyPopup
-            matchState={gameState.matchState}
-            bots={gameState.bots}
-            onConfirm={handleStrategyConfirm}
-        />
+        {gameState.matchState.phase === MatchPhase.PAUSED_FOR_STRATEGY && (
+          <SituationRoom
+              matchState={gameState.matchState}
+              bots={gameState.bots}
+              onConfirm={handleStrategyConfirm}
+          />
+        )}
 
         {gameState.matchState.phase === MatchPhase.ROUND_END && (
           <RoundResultOverlay
@@ -262,6 +264,7 @@ export default function SimulationPage() {
             <MapVisualizer
               map={simulatorRef.current.map}
               bots={gameState.bots}
+              zoneStates={gameState.zoneStates}
             />
           </div>
 

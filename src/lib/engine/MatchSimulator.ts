@@ -4,10 +4,11 @@ import { TacticsManager, TeamSide, Tactic } from "./TacticsManager";
 import { DuelEngine } from "./DuelEngine";
 import { Player } from "@/types";
 import { DUST2_MAP } from "./maps/dust2";
-import { MatchState, MatchPhase, RoundEndReason, BuyStrategy } from "./types";
+import { MatchState, MatchPhase, RoundEndReason, BuyStrategy, DroppedWeapon } from "./types";
 import { EconomySystem } from "./EconomySystem";
-import { BuyLogic } from "./BuyLogic";
-import { ECONOMY } from "./constants";
+import { TeamEconomyManager } from "./TeamEconomyManager";
+import { ECONOMY, WEAPONS, WeaponType } from "./constants";
+import { WeaponUtils } from "./WeaponUtils";
 import { Bomb, BombStatus } from "./Bomb";
 import { EventManager } from "./EventManager";
 
@@ -22,6 +23,7 @@ export interface PlayerStats {
 
 export interface ZoneState {
     noiseLevel: number;
+    droppedWeapons: DroppedWeapon[];
 }
 
 export interface SimulationState {
@@ -87,7 +89,7 @@ export class MatchSimulator {
 
     // Initialize Zone States
     this.map.data.zones.forEach(z => {
-        this.zoneStates[z.id] = { noiseLevel: 0 };
+        this.zoneStates[z.id] = { noiseLevel: 0, droppedWeapons: [] };
     });
 
     // Initialize Bots
@@ -182,8 +184,11 @@ export class MatchSimulator {
     this.matchState.phase = MatchPhase.PAUSED_FOR_STRATEGY; // Pause for strategy
     this.matchState.phaseTimer = this.FREEZE_TIME;
 
-    // Reset Zone Noise
-    Object.keys(this.zoneStates).forEach(key => this.zoneStates[key].noiseLevel = 0);
+    // Reset Zone Noise and Dropped Weapons
+    Object.keys(this.zoneStates).forEach(key => {
+        this.zoneStates[key].noiseLevel = 0;
+        this.zoneStates[key].droppedWeapons = [];
+    });
 
     // Respawn Bots
     this.bots.forEach(bot => {
@@ -215,23 +220,31 @@ export class MatchSimulator {
     // Note: Buy Logic is now deferred to applyStrategies
   }
 
-  public applyStrategies(tStrategy: BuyStrategy, tTactic: Tactic, ctStrategy: BuyStrategy, ctTactic: Tactic) {
-    // 1. Set Tactics
+  public applyStrategies(tStrategy: BuyStrategy, tTactic: Tactic, ctStrategy: BuyStrategy, ctTactic: Tactic, roleOverrides: Record<string, string>) {
+    // 1. Apply Role Overrides
+    this.bots.forEach(bot => {
+        if (roleOverrides[bot.id]) {
+            bot.roundRole = roleOverrides[bot.id];
+        } else {
+            bot.roundRole = bot.player.role; // Reset to default if not overridden
+        }
+    });
+
+    // 2. Set Tactics
     this.tacticsManager.setTactic(TeamSide.T, tTactic);
     this.tacticsManager.setTactic(TeamSide.CT, ctTactic);
 
-    // Update Assignments based on new tactics
+    // Update Assignments based on new tactics and roles
     this.tacticsManager.updateAssignments(this.bots, this.map);
 
-    // 2. Execute Buy Logic
-    this.bots.forEach(bot => {
-      if (bot.player.inventory) {
-        const strategy = bot.side === TeamSide.T ? tStrategy : ctStrategy;
-        BuyLogic.processBuy(bot.player.inventory, bot.side, bot.player.role, strategy);
-      }
-    });
+    // 3. Execute Team Buy Logic
+    const tBots = this.bots.filter(b => b.side === TeamSide.T);
+    const ctBots = this.bots.filter(b => b.side === TeamSide.CT);
 
-    // 3. Start Freezetime
+    TeamEconomyManager.executeTeamBuy(tBots, tStrategy, TeamSide.T);
+    TeamEconomyManager.executeTeamBuy(ctBots, ctStrategy, TeamSide.CT);
+
+    // 4. Start Freezetime
     this.matchState.phase = MatchPhase.FREEZETIME;
 
     // Log Financial State
@@ -404,9 +417,59 @@ export class MatchSimulator {
       bot.updateGoal(this.map, this.bomb, this.tacticsManager, this.zoneStates, this.tickCount, this.bots);
 
       // Get Action
-      const action = bot.decideAction(this.map);
+      const action = bot.decideAction(this.map, this.zoneStates);
 
-      if (action.type === "MOVE" && action.targetZoneId) {
+      if (action.type === "PICKUP_WEAPON") {
+          const zoneDrops = this.zoneStates[bot.currentZoneId]?.droppedWeapons || [];
+          if (zoneDrops.length > 0) {
+              // Logic to pick best weapon
+              let bestDropIndex = -1;
+              let bestTier = -1;
+
+              zoneDrops.forEach((d, idx) => {
+                  const w = WeaponUtils.getWeaponTier(WEAPONS[d.weaponId].type);
+                  if (w > bestTier) {
+                      bestTier = w;
+                      bestDropIndex = idx;
+                  }
+              });
+
+              if (bestDropIndex !== -1) {
+                  const drop = zoneDrops[bestDropIndex];
+                  const newWeaponId = drop.weaponId;
+                  const newWeaponType = WEAPONS[newWeaponId].type;
+                  const isPistol = newWeaponType === WeaponType.PISTOL;
+
+                  // Drop current weapon in that slot
+                  const oldWeaponId = isPistol ? bot.player.inventory?.secondaryWeapon : bot.player.inventory?.primaryWeapon;
+
+                  if (oldWeaponId) {
+                      const zone = this.map.getZone(bot.currentZoneId);
+                      this.zoneStates[bot.currentZoneId].droppedWeapons.push({
+                          id: `drop_${this.tickCount}_swap_${bot.id}`,
+                          weaponId: oldWeaponId,
+                          zoneId: bot.currentZoneId,
+                          x: (zone?.x || 500) + (Math.random() * 40 - 20),
+                          y: (zone?.y || 500) + (Math.random() * 40 - 20)
+                      });
+                  }
+
+                  // Equip
+                  if (bot.player.inventory) {
+                      if (isPistol) bot.player.inventory.secondaryWeapon = newWeaponId;
+                      else bot.player.inventory.primaryWeapon = newWeaponId;
+                  }
+
+                  // Remove picked up weapon
+                  this.zoneStates[bot.currentZoneId].droppedWeapons.splice(bestDropIndex, 1);
+
+                  // Set Timer
+                  bot.weaponSwapTimer = 5;
+                  this.events.unshift(`[Tick ${this.tickCount}] 🎒 ${bot.player.name} picked up ${WEAPONS[newWeaponId].name}`);
+              }
+          }
+      }
+      else if (action.type === "MOVE" && action.targetZoneId) {
         // Initialize movement if new target
         if (bot.targetZoneId !== action.targetZoneId) {
            bot.targetZoneId = action.targetZoneId;
@@ -570,6 +633,7 @@ export class MatchSimulator {
         if (this.bomb.defuserId === attacker.id) return;
         if (attacker.aiState === BotAIState.CHARGING_UTILITY) return;
         if (attacker.combatCooldown > 0) return;
+        if (attacker.weaponSwapTimer > 0) return; // Cannot fire while swapping
 
         // Find potential targets:
         // 1. In same zone
@@ -677,8 +741,8 @@ export class MatchSimulator {
 
         // Calculate Outcome
         // If targetBusy is true, target cannot return fire.
-        // I need to update DuelEngine.calculateOutcome to support this.
-        const result = DuelEngine.calculateOutcome(attacker, target, targetInfo.distance, targetInfo.isCrossZone, !targetBusy);
+        const targetCannotFire = targetBusy || target.weaponSwapTimer > 0;
+        const result = DuelEngine.calculateOutcome(attacker, target, targetInfo.distance, targetInfo.isCrossZone, !targetCannotFire);
 
         const winner = result.winnerId === attacker.id ? attacker : target;
         const loser = result.winnerId === attacker.id ? target : attacker;
@@ -699,6 +763,38 @@ export class MatchSimulator {
         if (loser.hp <= 0) {
             const weapon = winner.getEquippedWeapon();
             const weaponName = weapon ? weapon.name : "Unknown";
+
+            // Drop Weapon Logic
+            const loserWeapon = loser.getEquippedWeapon();
+            if (loserWeapon && loser.player.inventory) {
+                const zone = this.map.getZone(loser.currentZoneId);
+                const dropId = `drop_${this.tickCount}_${loser.id}`;
+                const droppedWeapon: DroppedWeapon = {
+                    id: dropId,
+                    weaponId: loser.player.inventory.primaryWeapon || loser.player.inventory.secondaryWeapon || "", // Prioritize primary
+                    zoneId: loser.currentZoneId,
+                    x: (zone?.x || 500) + (Math.random() * 40 - 20),
+                    y: (zone?.y || 500) + (Math.random() * 40 - 20)
+                };
+
+                // If they have primary, drop it. If only secondary, drop it.
+                // Logic: getEquippedWeapon returns the active one.
+                // We want to drop the best weapon they have usually, or the one equipped?
+                // CS logic: You drop what you hold. But bots should hold best weapon.
+                // Let's drop the primary if it exists, otherwise secondary.
+                if (loser.player.inventory.primaryWeapon) {
+                    droppedWeapon.weaponId = loser.player.inventory.primaryWeapon;
+                    loser.player.inventory.primaryWeapon = undefined;
+                } else if (loser.player.inventory.secondaryWeapon) {
+                    droppedWeapon.weaponId = loser.player.inventory.secondaryWeapon;
+                    loser.player.inventory.secondaryWeapon = undefined; // Actually pistols drop too? Yes.
+                }
+
+                if (droppedWeapon.weaponId) {
+                    this.zoneStates[loser.currentZoneId].droppedWeapons.push(droppedWeapon);
+                    // this.events.unshift(`> 🔫 ${loser.player.name} dropped ${droppedWeapon.weaponId}`);
+                }
+            }
 
             // Kill Reward
             let reward = 300;

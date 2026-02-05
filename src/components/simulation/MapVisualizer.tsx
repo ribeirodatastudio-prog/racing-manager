@@ -1,15 +1,38 @@
 import React from "react";
 import { GameMap } from "@/lib/engine/GameMap";
 import { Bot } from "@/lib/engine/Bot";
+import { ZoneState } from "@/lib/engine/MatchSimulator";
 
 interface MapVisualizerProps {
   map: GameMap;
   bots: Bot[];
+  zoneStates?: Record<string, ZoneState>; // Optional to support legacy usages
   selectedBotId?: string | null;
 }
 
-export const MapVisualizer: React.FC<MapVisualizerProps> = ({ map, bots, selectedBotId }) => {
+export const MapVisualizer: React.FC<MapVisualizerProps> = ({ map, bots, zoneStates, selectedBotId }) => {
   const zones = map.getAllZones();
+
+  // Collect Dropped Weapons
+  const droppedWeaponsNodes: React.ReactNode[] = [];
+  if (zoneStates) {
+      Object.values(zoneStates).forEach(state => {
+          state.droppedWeapons.forEach(drop => {
+              droppedWeaponsNodes.push(
+                  <g key={drop.id} className="pointer-events-none">
+                      <rect
+                        x={drop.x - 3}
+                        y={drop.y - 3}
+                        width={6}
+                        height={6}
+                        transform={`rotate(45 ${drop.x} ${drop.y})`}
+                        className="fill-purple-500 stroke-black stroke-[0.5]"
+                      />
+                  </g>
+              );
+          });
+      });
+  }
 
   // Draw connections (Edges)
   const drawnConnections = new Set<string>();
@@ -164,6 +187,9 @@ export const MapVisualizer: React.FC<MapVisualizerProps> = ({ map, bots, selecte
             </text>
           </g>
         ))}
+
+        {/* Dropped Weapons */}
+        {droppedWeaponsNodes}
 
         {/* Bots */}
         {bots.map((bot, index) => {

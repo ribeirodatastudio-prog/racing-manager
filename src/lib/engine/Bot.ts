@@ -7,11 +7,13 @@ import { Bomb, BombStatus } from "./Bomb";
 import { WeaponManager } from "./WeaponManager";
 import { Weapon } from "@/types/Weapon";
 import { EventManager, GameEvent } from "./EventManager";
+import { DroppedWeapon } from "./types";
+import { WeaponUtils } from "./WeaponUtils";
 
 export type BotStatus = "ALIVE" | "DEAD";
 
 export interface BotAction {
-  type: "MOVE" | "HOLD" | "IDLE" | "PLANT" | "DEFUSE" | "CHARGE_UTILITY";
+  type: "MOVE" | "HOLD" | "IDLE" | "PLANT" | "DEFUSE" | "CHARGE_UTILITY" | "PICKUP_WEAPON";
   targetZoneId?: string;
 }
 
@@ -40,6 +42,7 @@ export class Bot {
   public targetZoneId: string | null = null;
   public recoilBulletIndex: number = 0;
   public combatCooldown: number = 0; // Ticks to wait after a kill
+  public weaponSwapTimer: number = 0; // Ticks to wait after swapping weapon
 
   // AI State
   public aiState: BotAIState = BotAIState.DEFAULT;
@@ -60,6 +63,7 @@ export class Bot {
   public stunTimer: number = 0;
   public isEntryFragger: boolean = false;
   public sprintMultiplier: number = 1.0;
+  public roundRole: string; // Dynamic role for the current round
 
   private eventManager: EventManager;
 
@@ -83,6 +87,7 @@ export class Bot {
     this.player = player;
     this.side = side;
     this.eventManager = eventManager;
+    this.roundRole = player.role; // Default to player's main role
 
     // Initialize Health/Armor state
     if (this.player.health === undefined) this.player.health = 100;
@@ -201,7 +206,7 @@ export class Bot {
       return totalThreat;
   }
 
-  updateGoal(map: GameMap, bomb: Bomb, tacticsManager: TacticsManager, zoneStates: Record<string, { noiseLevel: number }>, currentTick: number = 0, allBots: Bot[] = []) {
+  updateGoal(map: GameMap, bomb: Bomb, tacticsManager: TacticsManager, zoneStates: Record<string, { noiseLevel: number; droppedWeapons?: DroppedWeapon[] }>, currentTick: number = 0, allBots: Bot[] = []) {
     if (this.status === "DEAD") return;
 
     if (this.combatCooldown > 0) {
@@ -210,6 +215,10 @@ export class Bot {
 
     if (this.utilityCooldown > 0) {
       this.utilityCooldown--;
+    }
+
+    if (this.weaponSwapTimer > 0) {
+      this.weaponSwapTimer--;
     }
 
     // Reset transient flags
@@ -526,8 +535,45 @@ export class Bot {
     }
   }
 
-  decideAction(map: GameMap): BotAction {
+  decideAction(map: GameMap, zoneStates: Record<string, { droppedWeapons?: DroppedWeapon[] }>): BotAction {
     if (this.status === "DEAD") return { type: "IDLE" };
+
+    // Weapon Pickup Check
+    if (this.aiState !== BotAIState.PLANTING && this.aiState !== BotAIState.DEFUSING && this.combatCooldown <= 0) {
+        const dropped = zoneStates[this.currentZoneId]?.droppedWeapons || [];
+        if (dropped.length > 0) {
+             const inv = this.player.inventory;
+             // Determine current tier from inventory IDs
+             let currentType = WEAPONS["knife"].type; // Default
+             if (inv?.primaryWeapon && WEAPONS[inv.primaryWeapon]) {
+                 currentType = WEAPONS[inv.primaryWeapon].type;
+             } else if (inv?.secondaryWeapon && WEAPONS[inv.secondaryWeapon]) {
+                 currentType = WEAPONS[inv.secondaryWeapon].type;
+             }
+
+             const currentTier = WeaponUtils.getWeaponTier(currentType);
+
+             // Find best dropped weapon
+             let bestDrop: DroppedWeapon | null = null;
+             let bestTier = currentTier;
+
+             dropped.forEach(d => {
+                 const weaponConst = WEAPONS[d.weaponId];
+                 if (weaponConst) {
+                     const tier = WeaponUtils.getWeaponTier(weaponConst.type);
+                     // Pickup if better tier (e.g. Pistol < Rifle)
+                     if (tier > bestTier) {
+                         bestTier = tier;
+                         bestDrop = d;
+                     }
+                 }
+             });
+
+             if (bestDrop) {
+                 return { type: "PICKUP_WEAPON" };
+             }
+        }
+    }
 
     if (this.aiState === BotAIState.CHARGING_UTILITY) {
         return { type: "CHARGE_UTILITY" };

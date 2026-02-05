@@ -94,7 +94,7 @@ while (globalRoundCounter < TARGET_ROUNDS) {
     const tBuy = randomItem(BUY_STRATEGIES);
     const ctBuy = randomItem(BUY_STRATEGIES);
 
-    sim.applyStrategies(tBuy, tTactic, ctBuy, ctTactic);
+    sim.applyStrategies(tBuy, tTactic, ctBuy, ctTactic, {});
 
     // Reset Round Trackers
     roundKills = [];
