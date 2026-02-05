@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { MatchSimulator, SimulationState } from "@/lib/engine/MatchSimulator";
-import { MOCK_PLAYERS } from "@/lib/mock-players";
+import { generateTeam } from "@/lib/player-generator";
 import { Player } from "@/types";
 import { MapVisualizer } from "@/components/simulation/MapVisualizer";
 import { SimulationControls } from "@/components/simulation/SimulationControls";
@@ -10,32 +10,42 @@ import { Scoreboard } from "@/components/simulation/Scoreboard";
 import { StrategyPopup } from "@/components/simulation/StrategyPopup";
 import { Tactic, TeamSide } from "@/lib/engine/TacticsManager";
 import { MatchPhase, BuyStrategy } from "@/lib/engine/types";
-
-// Helper to create 10 players from the mock 5
-const generatePlayers = (): Player[] => {
-  const players: Player[] = [];
-  // Team 1 (Originals)
-  MOCK_PLAYERS.forEach(p => players.push({ ...p, id: `${p.id}_1`, name: `${p.name} (1)` }));
-  // Team 2 (Clones)
-  MOCK_PLAYERS.forEach(p => players.push({ ...p, id: `${p.id}_2`, name: `${p.name} (2)` }));
-  return players;
-};
+import { Users, RefreshCw, CheckCircle } from "lucide-react";
 
 export default function SimulationPage() {
   const simulatorRef = useRef<MatchSimulator | null>(null);
+
+  // App State
+  const [simPhase, setSimPhase] = useState<'ROSTER_SELECTION' | 'GAME'>('ROSTER_SELECTION');
+  const [players, setPlayers] = useState<Player[]>([]);
+
+  // Simulation State
   const [gameState, setGameState] = useState<SimulationState | null>(null);
   const [isRunning, setIsRunning] = useState(false);
   const [tTactic, setTTactic] = useState<Tactic>("DEFAULT");
   const [ctTactic, setCtTactic] = useState<Tactic>("DEFAULT");
 
+  // Initial Roster Generation
   useEffect(() => {
-    // Initialize Simulator
-    const players = generatePlayers();
-    const sim = new MatchSimulator(players, (state) => {
-      setGameState({ ...state }); // Spread to trigger re-render
+    handleRegenerateRoster();
+  }, []);
+
+  const handleRegenerateRoster = () => {
+    const newTeam = generateTeam(10, 1);
+    setPlayers(newTeam);
+  };
+
+  const handleConfirmRoster = () => {
+    setSimPhase('GAME');
+    initializeSimulation(players);
+  };
+
+  const initializeSimulation = (roster: Player[]) => {
+    const sim = new MatchSimulator(roster, (state) => {
+      setGameState({ ...state });
     });
 
-    // Set initial state
+    // Set initial state immediately
     setGameState({
       bots: sim.bots,
       tickCount: sim.tickCount,
@@ -47,9 +57,14 @@ export default function SimulationPage() {
     });
 
     simulatorRef.current = sim;
+  };
 
+  // Cleanup on unmount
+  useEffect(() => {
     return () => {
-      sim.stop();
+      if (simulatorRef.current) {
+        simulatorRef.current.stop();
+      }
     };
   }, []);
 
@@ -116,20 +131,103 @@ export default function SimulationPage() {
     }
   };
 
+  // --- Roster View ---
+  if (simPhase === 'ROSTER_SELECTION') {
+    const tPlayers = players.filter((_, i) => i % 2 === 0);
+    const ctPlayers = players.filter((_, i) => i % 2 !== 0);
+
+    return (
+      <div className="min-h-screen bg-zinc-950 text-white p-8 font-sans flex flex-col items-center">
+        <div className="max-w-5xl w-full">
+          <header className="mb-12 text-center">
+            <h1 className="text-4xl font-bold uppercase tracking-widest text-yellow-500 mb-2">
+              Match Initialization
+            </h1>
+            <p className="text-zinc-500">Review and confirm team rosters before starting.</p>
+          </header>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-12 mb-12">
+            {/* T Side */}
+            <div className="bg-zinc-900/50 border border-yellow-900/30 p-6">
+              <h2 className="text-2xl font-bold text-yellow-500 mb-6 flex items-center gap-2">
+                <Users size={24} /> Terrorists
+              </h2>
+              <div className="space-y-3">
+                {tPlayers.map(p => (
+                  <div key={p.id} className="bg-zinc-800 p-3 border-l-2 border-yellow-600 flex justify-between items-center">
+                    <div>
+                      <div className="font-bold text-white">{p.name}</div>
+                      <div className="text-xs text-zinc-500">{p.role} • {p.nationality}</div>
+                    </div>
+                    <div className="text-right">
+                       <div className="text-xs font-mono text-yellow-500">AIM: {Math.floor(p.skills.technical.shooting / 10)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* CT Side */}
+            <div className="bg-zinc-900/50 border border-blue-900/30 p-6">
+              <h2 className="text-2xl font-bold text-blue-500 mb-6 flex items-center gap-2">
+                <Users size={24} /> Counter-Terrorists
+              </h2>
+              <div className="space-y-3">
+                {ctPlayers.map(p => (
+                  <div key={p.id} className="bg-zinc-800 p-3 border-l-2 border-blue-600 flex justify-between items-center">
+                    <div>
+                      <div className="font-bold text-white">{p.name}</div>
+                      <div className="text-xs text-zinc-500">{p.role} • {p.nationality}</div>
+                    </div>
+                    <div className="text-right">
+                       <div className="text-xs font-mono text-blue-500">AIM: {Math.floor(p.skills.technical.shooting / 10)}</div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-center gap-6">
+            <button
+              onClick={handleRegenerateRoster}
+              className="flex items-center gap-2 px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-white font-bold uppercase tracking-wider transition-colors border border-zinc-600"
+            >
+              <RefreshCw size={20} /> Regenerate
+            </button>
+            <button
+              onClick={handleConfirmRoster}
+              className="flex items-center gap-2 px-8 py-3 bg-green-600 hover:bg-green-500 text-white font-bold uppercase tracking-wider transition-colors"
+            >
+              <CheckCircle size={20} /> Confirm & Start
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Simulation View ---
+
   if (!gameState || !simulatorRef.current) {
-    return <div className="text-white p-10">Loading Simulation...</div>;
+    return <div className="text-white p-10">Initializing Engine...</div>;
   }
 
   return (
     <div className="min-h-screen bg-black text-white p-8 font-sans">
       <div className="max-w-6xl mx-auto">
-        <header className="mb-8">
-          <h1 className="text-3xl font-bold uppercase tracking-widest text-yellow-500 mb-2">
-            Counter-Strike Strategy Engine
-          </h1>
-          <p className="text-zinc-500">
-            Phase 4: Economy, Objectives & MR12 Logic
-          </p>
+        <header className="mb-8 flex justify-between items-end">
+          <div>
+            <h1 className="text-3xl font-bold uppercase tracking-widest text-yellow-500 mb-2">
+                Counter-Strike Strategy Engine
+            </h1>
+            <p className="text-zinc-500">
+                Phase 4: Economy, Objectives & MR12 Logic
+            </p>
+          </div>
+          <div className="text-zinc-600 text-sm font-mono">
+            Roster Locked
+          </div>
         </header>
 
         <StrategyPopup
