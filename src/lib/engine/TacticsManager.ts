@@ -77,9 +77,10 @@ export class TacticsManager {
 
           const side = bot.side;
           const tactic = this.getTactic(side);
-          const roleName = this.roleAssignments[bot.id];
+          // Use override, or fallback to player's natural role
+          const roleName = this.roleAssignments[bot.id] || bot.player.role;
 
-          let targetZone = side === TeamSide.T ? "mid" : "ct_spawn"; // Fallback
+          let targetZone = side === TeamSide.T ? "xbox" : "ct_spawn"; // Fallback: Xbox is central mid
           let behaviorRole = "Rifler";
           let splitGroup = null;
 
@@ -113,24 +114,24 @@ export class TacticsManager {
 
       // --- CT TACTICS ---
       if (tactic === "STANDARD") {
-          if (roleName === "Anchor A") return { target: sites.A };
-          if (roleName === "Support A / Rotator") return { target: "long_doors" }; // Or A Ramp
+          if (roleName === "Anchor A") return { target: "a_boxes" }; // Specific hold
+          if (roleName === "Support A / Rotator") return { target: "long_pit" }; // Strong long hold
           if (roleName === "Mid Player") return { target: "mid_doors" };
           if (roleName === "Support B / Rotator") return { target: "b_doors" };
-          if (roleName === "Anchor B") return { target: sites.B };
+          if (roleName === "Anchor B") return { target: "b_closet" }; // Specific hold
       }
       if (tactic === "AGGRESSIVE_PUSH") {
           // Push Top Mid / Catwalk
           if (roleName.includes("Aggressor") || roleName.includes("Flasher")) return { target: "top_mid" };
-          if (roleName === "Passive Anchor 1") return { target: sites.A }; // Hold A
+          if (roleName === "Passive Anchor 1") return { target: "a_boxes" }; // Hold A
           if (roleName === "Passive Rotator") return { target: "ct_spawn" };
       }
       if (tactic === "GAMBLE_STACK_A") {
-          if (roleName === "Solo Anchor B") return { target: sites.B };
+          if (roleName === "Solo Anchor B") return { target: "b_closet" };
           return { target: sites.A };
       }
       if (tactic === "GAMBLE_STACK_B") {
-          if (roleName === "Solo Anchor A") return { target: sites.A };
+          if (roleName === "Solo Anchor A") return { target: "a_boxes" };
           return { target: sites.B };
       }
       if (tactic === "RETAKE_SETUP") {
@@ -144,7 +145,7 @@ export class TacticsManager {
       if (tactic === "DEFAULT") {
           if (roleName.includes("Entry")) return { target: "top_mid" };
           if (roleName === "Support") return { target: "outside_long" };
-          if (roleName === "Mid Controller") return { target: "mid_doors" };
+          if (roleName === "Mid Controller") return { target: "xbox" }; // Hold mid control
           if (roleName === "Lurker") return { target: "upper_tunnels" };
           if (roleName.includes("IGL")) return { target: "outside_tunnels" };
       }
@@ -168,7 +169,7 @@ export class TacticsManager {
           // Pincer Points
           const splitData = map.data.strategies?.split.A;
           const mainGroup = splitData ? splitData[0].pincerPoint : sites.A; // Long
-          const midGroup = splitData ? splitData[1].pincerPoint : "catwalk"; // Short
+          const midGroup = splitData ? splitData[1].pincerPoint : "catwalk_lower"; // Short
 
           if (roleName === "Lurker") return { target: "ct_spawn" }; // Flank
           if (roleName.includes("Main Group")) return { target: mainGroup, group: "Main" };
@@ -178,7 +179,7 @@ export class TacticsManager {
       if (tactic === "SPLIT_B") {
           const splitData = map.data.strategies?.split.B;
           const mainGroup = splitData ? splitData[0].pincerPoint : sites.B; // Tunnels
-          const midGroup = splitData ? splitData[1].pincerPoint : "mid_doors"; // Mid
+          const midGroup = splitData ? splitData[1].pincerPoint : "ct_mid"; // Mid (Push through mid doors)
 
           if (roleName === "Lurker") return { target: "ct_spawn" };
           if (roleName.includes("Main Group")) return { target: mainGroup, group: "Main" };
@@ -199,7 +200,7 @@ export class TacticsManager {
     const assignment = this.assignments[bot.id];
 
     if (!assignment) {
-        return side === "T" ? "mid" : "ct_spawn";
+        return side === "T" ? "xbox" : "ct_spawn";
     }
 
     // Dynamic Handling based on Phase
