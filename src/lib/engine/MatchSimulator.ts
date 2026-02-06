@@ -1,7 +1,8 @@
 import { Bot, BotAIState } from "./Bot";
 import { GameMap } from "./GameMap";
 import { TacticsManager, TeamSide, Tactic } from "./TacticsManager";
-import { DuelEngine, DuelResult, ParticipantResult } from "./DuelEngine";
+import { DuelEngine } from "./DuelEngine";
+import { DuelResult, ParticipantResult } from "./types";
 import { Player } from "@/types";
 import { DUST2_MAP } from "./maps/dust2";
 import { MatchState, MatchPhase, RoundEndReason, BuyStrategy, DroppedWeapon } from "./types";
@@ -860,11 +861,14 @@ export class MatchSimulator {
                 isCrossZone: chosen.isCrossZone,
                 peekType: peekType,
                 defenderHolding: chosen.bot.aiState === BotAIState.HOLDING_ANGLE,
+                attackerMoving: (bot.targetZoneId !== null || bot.movementProgress > 0),
+                defenderMoving: (chosen.bot.targetZoneId !== null || chosen.bot.movementProgress > 0),
                 attackerCover: attackerZone?.cover || 0,
                 defenderCover: targetZone?.cover || 0,
                 flashedAttacker: Math.min(1, bot.stunTimer / 20),
                 flashedDefender: Math.min(1, chosen.bot.stunTimer / 20),
-                smoked: isSmoked
+                smoked: isSmoked,
+                distance: chosen.distance
             }
         });
     }
@@ -903,16 +907,6 @@ export class MatchSimulator {
          spentBots.add(eng.attacker.id);
 
          const result = DuelEngine.calculateOutcome(eng.attacker, eng.target, eng.distance, eng.isCrossZone, targetCanFire, eng.context);
-
-         // Note: ENEMY_SPOTTED is now handled by detectEnemies().
-         // However, gunfire definitely reveals position instantly and reliably.
-         // We can keep a high-reliability spot here or rely on Noise + detectEnemies?
-         // User: "don't auto-spot after shots... spotting happens from vision + noise"
-         // But gunfire increases noise which increases spot chance.
-         // However, current detectEnemies runs BEFORE noise is added from combat this tick.
-         // So noise from THIS shot affects NEXT tick. That's fine.
-         // But "gunfire makes spotting easier" is in the requirement.
-         // I will REMOVE the auto-publish here as requested.
 
         // Interrupt logic
         if (this.bomb.planterId === eng.target.id) { this.bomb.abortPlanting(); eng.target.aiState = BotAIState.DEFAULT; }
@@ -994,6 +988,8 @@ export class MatchSimulator {
       // Sort by time
       events.sort((a, b) => a.time - b.time);
 
+      const cooldownsToApply = new Map<string, number>();
+
       for (const e of events) {
           if (e.actor.status === "DEAD") continue; // Actor died before shooting
 
@@ -1007,7 +1003,27 @@ export class MatchSimulator {
                    this.handleKill(e.actor, e.victim, e.result.isHeadshot, e.actor.getEquippedWeapon());
               }
           }
+
+          // Calculate Cooldown for this actor based on the time they spent shooting
+          if (!cooldownsToApply.has(e.actor.id)) {
+              const timeMs = e.result.timeTaken;
+              const ticksSpent = Math.ceil(timeMs / 100);
+              // Target Switch: 120ms + (1-composure)*120
+              const composure = e.actor.player.skills.mental.composure / 100;
+              const switchMs = 120 + (1 - composure) * 120;
+              const switchTicks = Math.ceil(switchMs / 100);
+
+              cooldownsToApply.set(e.actor.id, ticksSpent + switchTicks);
+          }
       }
+
+      // Apply cooldowns
+      cooldownsToApply.forEach((ticks, botId) => {
+          const bot = this.bots.find(b => b.id === botId);
+          if (bot && bot.status === "ALIVE") {
+              bot.combatCooldown = ticks;
+          }
+      });
 
       if (result.publicLog.length > 0) {
            result.publicLog.forEach(l => this.events.unshift(`> ${l}`));
@@ -1109,11 +1125,16 @@ export class MatchSimulator {
                        isCrossZone,
                        peekType: "SWING",
                        defenderHolding: false,
+                       attackerMoving: (teammate.targetZoneId !== null || teammate.movementProgress > 0),
+                       defenderMoving: false, // killer assumed static while shooting?
+                       // Actually killer might be moving too. But we don't have easy access to killer's move state here without looking it up.
+                       // We can look it up.
                        attackerCover: traderZone?.cover || 0,
                        defenderCover: killerZone?.cover || 0,
                        flashedAttacker: 0,
                        flashedDefender: 0,
-                       smoked: false
+                       smoked: false,
+                       distance
                    };
 
                    this.events.unshift(`[Trade] ⚔️ ${teammate.player.name} attempting trade on ${killer.player.name}!`);
@@ -1124,12 +1145,6 @@ export class MatchSimulator {
               }
           }
       }
-
-      // Combat Delay
-      const rxn = killer.player.skills.physical.reactionTime;
-      const dex = killer.player.skills.physical.dexterity;
-      const delay = Math.max(2, Math.floor(6 - (rxn + dex) / 50));
-      killer.combatCooldown = delay;
 
       if (this.bomb.carrierId === victim.id) {
            victim.hasBomb = false;

@@ -95,3 +95,21 @@ export interface DroppedWeapon {
   x: number; // For visualization within the zone
   y: number;
 }
+
+export interface ParticipantResult {
+  id: string;
+  damage: number;
+  hits: number;
+  timeTaken: number; // in ms, Infinity if no hit
+  isHeadshot: boolean;
+  bulletsFired: number;
+  fired: boolean;
+}
+
+export interface DuelResult {
+  winnerId: string | null; // ID of who "won" (killed or dealt more damage first), or null
+  log: string[];
+  publicLog: string[];
+  initiator: ParticipantResult;
+  target: ParticipantResult;
+}
