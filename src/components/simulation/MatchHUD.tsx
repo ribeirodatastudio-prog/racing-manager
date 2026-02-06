@@ -32,7 +32,7 @@ export const MatchHUD: React.FC<MatchHUDProps> = ({ roundTimer, matchState, bomb
   const ctScore = matchState.scores.CT;
 
   return (
-    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[60] flex flex-col items-center pointer-events-none">
+    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-[70] flex flex-col items-center pointer-events-none">
       {/* Time Panel */}
       <div className={`
         flex items-center justify-center px-6 py-2 rounded-b-lg shadow-2xl border-x border-b border-white/10 backdrop-blur-sm

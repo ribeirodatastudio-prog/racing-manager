@@ -248,10 +248,18 @@ export class Bot {
     const tactic = tacticsManager.getTactic(this.side);
 
     // Stealth / Shift Walk Logic
+    this.isShiftWalking = false;
     if (tactic.includes("CONTACT")) {
         if (this.stealthMode) this.isShiftWalking = true;
-    } else {
-        this.stealthMode = false;
+    }
+    // Lurker Logic: Walk to stay quiet unless discovered or far behind
+    if (this.roundRole === "Lurker" && this.side === TeamSide.T) {
+        // Simple logic: Shift walk if enemies nearby or holding
+        // For now, default to stealthy movement
+        this.isShiftWalking = true;
+    }
+    // Entry Logic: Never shift walk if attacking
+    if (this.roundRole === "Entry Fragger") {
         this.isShiftWalking = false;
     }
 
@@ -263,8 +271,8 @@ export class Bot {
                  // At entry zone
                  // Check if we can/should throw utility
                  if (this.utilityCooldown <= 0) {
-                     const role = tacticsManager.getRole(this.id);
-                     const isSupport = role === "Support";
+                     // Use roundRole which is synced with TacticsManager
+                     const isSupport = this.roundRole === "Support";
 
                      // If Support, always try to throw if inventory exists.
                      // If not Support, throw only if haven't thrown yet.
@@ -468,6 +476,12 @@ export class Bot {
               desiredState = BotAIState.DEFAULT;
           }
       }
+      // Bomb Recovery: If bomb is dropped, go get it!
+      else if (bomb.status === BombStatus.IDLE && bomb.droppedLocation) {
+          desiredGoal = bomb.droppedLocation;
+          desiredState = BotAIState.ROTATING; // Urgent
+          this.sprintMultiplier = 1.1; // Hurry up
+      }
       else if (bomb.status === BombStatus.PLANTED) {
           // Post-Plant "Spread out" Behavior
           if (bomb.plantSite) {
@@ -640,7 +654,12 @@ export class Bot {
         return { type: "HOLD" };
     }
 
-    const moveChance = 0.1 + (this.player.skills.mental.aggression / 200) * 0.8;
+    let moveChance = 0.1 + (this.player.skills.mental.aggression / 200) * 0.8;
+
+    // Role Modifiers
+    if (this.roundRole === "Entry Fragger") moveChance += 0.2;
+    if (this.roundRole === "Lurker") moveChance -= 0.1;
+
     const isUrgent = this.aiState === BotAIState.SAVING || this.aiState === BotAIState.DEFUSING || this.aiState === BotAIState.ROTATING;
 
     if (this.targetZoneId) {

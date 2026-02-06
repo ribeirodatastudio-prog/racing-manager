@@ -193,6 +193,8 @@ export class MatchSimulator {
 
     // Respawn Bots
     this.bots.forEach(bot => {
+      const wasDead = bot.status === "DEAD";
+
       bot.hp = 100;
       bot.status = "ALIVE";
       bot.aiState = BotAIState.DEFAULT;
@@ -204,6 +206,32 @@ export class MatchSimulator {
       bot.utilityChargeTimer = 0;
       const spawn = this.map.getSpawnPoint(bot.side);
       bot.currentZoneId = spawn!.id;
+
+      // Inventory Persistence Logic
+      if (wasDead) {
+          // Died: Reset Inventory but KEEP MONEY
+          if (bot.player.inventory) {
+              const savedMoney = bot.player.inventory.money;
+              bot.player.inventory = {
+                  money: savedMoney,
+                  hasKevlar: false,
+                  hasHelmet: false,
+                  hasDefuseKit: false,
+                  grenades: [],
+                  primaryWeapon: undefined,
+                  secondaryWeapon: bot.side === TeamSide.T ? "glock-18" : "usp-s"
+              };
+          }
+      } else {
+          // Survived: Keep Inventory
+          // Ensure secondary weapon exists (Mandatory Pistol)
+          if (bot.player.inventory) {
+              if (!bot.player.inventory.secondaryWeapon) {
+                  bot.player.inventory.secondaryWeapon = bot.side === TeamSide.T ? "glock-18" : "usp-s";
+              }
+              // Reset Grenades? No, survivors keep utility in CS.
+          }
+      }
     });
 
     // Assign Bomb to random T
@@ -352,6 +380,18 @@ export class MatchSimulator {
         }
     }
 
+    // Force updates to Bomb State before Bots decide
+    // Ensure Bomb Carrier logic handles bomb correctly
+    if (this.bomb.status === BombStatus.IDLE && this.bomb.droppedLocation) {
+         // Check for Pickup (redundant with Bot logic but ensures update)
+         const botsAtBomb = this.bots.filter(b => b.status === "ALIVE" && b.currentZoneId === this.bomb.droppedLocation && b.side === TeamSide.T);
+         if (botsAtBomb.length > 0) {
+             const picker = botsAtBomb[0];
+             this.bomb.pickup(picker.id);
+             picker.hasBomb = true;
+             this.events.unshift(`[Round ${this.matchState.round}] 💣 ${picker.player.name} recovered the bomb!`);
+         }
+    }
 
     // Pre-calculate zone occupancy for Capacity Logic
     const zoneOccupancy: Record<string, { T: number, CT: number }> = {};
@@ -520,11 +560,16 @@ export class MatchSimulator {
 
                             const zone = this.map.getZone(targetId);
                             if (zone) {
-                                 const validNeighbor = zone.connections.find(n => {
+                                 let validNeighbor = zone.connections.find(n => {
                                      // n is a Connection object now
                                      const count = (zoneOccupancy[n.to]?.T || 0) + (zoneOccupancy[n.to]?.CT || 0);
                                      return count < 4;
                                  });
+
+                                 // Fallback: Force displacement to ANY neighbor if all are crowded
+                                 if (!validNeighbor && zone.connections.length > 0) {
+                                     validNeighbor = zone.connections[0];
+                                 }
 
                                  if (validNeighbor) {
                                      const neighborName = this.map.getZone(validNeighbor.to)?.name;
