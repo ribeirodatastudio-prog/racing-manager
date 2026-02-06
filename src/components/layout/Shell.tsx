@@ -17,7 +17,7 @@ const NAV_ITEMS = [
   { label: "Tactics", icon: Activity },
   { label: "Tournaments", icon: Trophy },
   { label: "Practice", icon: Swords, href: "/practice" },
-  { label: "Settings", icon: Settings },
+  { label: "Settings", icon: Settings, href: "/settings" },
 ];
 
 export function Shell({ children }: ShellProps) {
