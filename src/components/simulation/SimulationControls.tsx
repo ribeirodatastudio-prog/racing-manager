@@ -13,6 +13,8 @@ interface SimulationControlsProps {
   onNextRound: () => void;
   canStartNextRound: boolean;
   onTacticChange: (side: TeamSide, tactic: Tactic) => void;
+  showNavMesh: boolean;
+  onToggleNavMesh: () => void;
 }
 
 const T_TACTICS: Tactic[] = [
@@ -42,6 +44,8 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
   onNextRound,
   canStartNextRound,
   onTacticChange,
+  showNavMesh,
+  onToggleNavMesh,
 }) => {
   const logRef = useRef<HTMLDivElement>(null);
 
@@ -83,6 +87,17 @@ export const SimulationControls: React.FC<SimulationControlsProps> = ({
             Reset Match
           </button>
         </div>
+
+        <button
+          onClick={onToggleNavMesh}
+          className={`w-full font-bold py-2 px-4 rounded-none uppercase text-xs border ${
+            showNavMesh
+              ? "bg-cyan-900/50 text-cyan-400 border-cyan-500"
+              : "bg-zinc-800 text-zinc-500 border-zinc-700 hover:border-zinc-500"
+          }`}
+        >
+          {showNavMesh ? "Hide Nav Mesh" : "Show Nav Mesh"}
+        </button>
 
         <button
             onClick={onNextRound}

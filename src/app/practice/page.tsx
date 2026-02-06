@@ -26,6 +26,7 @@ export default function PracticePage() {
   const [isRunning, setIsRunning] = useState(false);
   const [tTactic, setTTactic] = useState<Tactic>("DEFAULT");
   const [ctTactic, setCtTactic] = useState<Tactic>("STANDARD");
+  const [showNavMesh, setShowNavMesh] = useState(false);
 
   // Initial Roster Generation
   useEffect(() => {
@@ -271,6 +272,7 @@ export default function PracticePage() {
               map={simulatorRef.current.map}
               bots={gameState.bots}
               zoneStates={gameState.zoneStates}
+              showNavMesh={showNavMesh}
             />
           </div>
 
@@ -288,6 +290,8 @@ export default function PracticePage() {
               onNextRound={handleNextRound}
               canStartNextRound={gameState.matchState.phase === MatchPhase.ROUND_END}
               onTacticChange={handleTacticChange}
+              showNavMesh={showNavMesh}
+              onToggleNavMesh={() => setShowNavMesh(!showNavMesh)}
             />
           </div>
         </div>
