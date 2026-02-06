@@ -1,180 +1,151 @@
-import { COLLISION_GRID, GRID_SIZE, MAP_WIDTH, MAP_HEIGHT } from "./maps/dust2_collisions";
+import { NAV_MESH, NavMeshNode } from "@/lib/utils/navMesh";
 import { Point } from "./types";
 
-const CELL_SIZE = MAP_WIDTH / GRID_SIZE; // 5
-
 export class Pathfinder {
-  static worldToGrid(p: Point): { x: number; y: number } {
-    return {
-      x: Math.floor(Math.max(0, Math.min(MAP_WIDTH - 1, p.x)) / CELL_SIZE),
-      y: Math.floor(Math.max(0, Math.min(MAP_HEIGHT - 1, p.y)) / CELL_SIZE),
-    };
-  }
+  private static nodes = Object.entries(NAV_MESH).map(([id, node]) => ({
+    id: parseInt(id),
+    pos: node.pos,
+    adj: node.adj
+  }));
 
-  static gridToWorld(gx: number, gy: number): Point {
-    return {
-      x: (gx * CELL_SIZE) + (CELL_SIZE / 2),
-      y: (gy * CELL_SIZE) + (CELL_SIZE / 2),
-    };
+  private static getClosestNode(p: Point): { id: number; pos: [number, number]; distSq: number } | null {
+    let closest = null;
+    let minDistSq = Infinity;
+
+    for (const node of this.nodes) {
+      const dx = p.x - node.pos[0];
+      const dy = p.y - node.pos[1];
+      const distSq = dx * dx + dy * dy;
+
+      if (distSq < minDistSq) {
+        minDistSq = distSq;
+        closest = { id: node.id, pos: node.pos, distSq };
+      }
+    }
+    return closest;
   }
 
   static isWalkable(x: number, y: number): boolean {
-    if (x < 0 || x >= MAP_WIDTH || y < 0 || y >= MAP_HEIGHT) return false;
+    const WALKABLE_THRESHOLD = 50;
+    const thresholdSq = WALKABLE_THRESHOLD * WALKABLE_THRESHOLD;
 
-    const gx = Math.floor(x / CELL_SIZE);
-    const gy = Math.floor(y / CELL_SIZE);
+    // We can iterate purely for distance check
+    let minDistSq = Infinity;
+    for (const node of this.nodes) {
+      const dx = x - node.pos[0];
+      const dy = y - node.pos[1];
+      const distSq = dx * dx + dy * dy;
 
-    if (gx < 0 || gx >= GRID_SIZE || gy < 0 || gy >= GRID_SIZE) return false;
+      if (distSq < minDistSq) {
+        minDistSq = distSq;
+      }
 
-    return COLLISION_GRID[gy * GRID_SIZE + gx] === 0;
+      // Early exit if we found a node close enough
+      if (minDistSq < thresholdSq) return true;
+    }
+
+    return minDistSq < thresholdSq;
   }
 
   static findPath(start: Point, end: Point): Point[] {
-    const startGrid = this.worldToGrid(start);
-    const endGrid = this.worldToGrid(end);
+    const startNodeInfo = this.getClosestNode(start);
+    const endNodeInfo = this.getClosestNode(end);
 
-    if (!this.isWalkable(end.x, end.y)) {
+    if (!startNodeInfo || !endNodeInfo) return [];
+
+    // A* Algorithm
+    const startId = startNodeInfo.id;
+    const endId = endNodeInfo.id;
+
+    if (startId === endId) {
+        return [end];
     }
 
-    const openSet: Node[] = [];
-    const closedSet = new Set<string>();
+    const openSet = new Set<number>([startId]);
+    const cameFrom = new Map<number, number>(); // node -> parent
 
-    const startNode: Node = {
-        x: startGrid.x,
-        y: startGrid.y,
-        g: 0,
-        h: this.heuristic(startGrid, endGrid),
-        parent: null
-    };
+    const gScore = new Map<number, number>();
+    gScore.set(startId, 0);
 
-    openSet.push(startNode);
+    const fScore = new Map<number, number>();
+    fScore.set(startId, this.heuristic(startNodeInfo.pos, endNodeInfo.pos));
 
-    while (openSet.length > 0) {
-        openSet.sort((a, b) => (a.g + a.h) - (b.g + b.h));
-        const current = openSet.shift()!;
+    // Helper to get node by ID
+    // Since we pre-processed nodes into an array, we might want a map for O(1) lookup
+    // or just rely on NAV_MESH global object for lookup by string ID
+    const getNode = (id: number) => NAV_MESH[id.toString()];
 
-        const key = `${current.x},${current.y}`;
-        if (closedSet.has(key)) continue;
-        closedSet.add(key);
+    while (openSet.size > 0) {
+        // Find node in openSet with lowest fScore
+        let currentId = -1;
+        let lowestF = Infinity;
 
-        if (current.x === endGrid.x && current.y === endGrid.y) {
-            return this.reconstructPath(current);
+        for (const id of openSet) {
+            const f = fScore.get(id) ?? Infinity;
+            if (f < lowestF) {
+                lowestF = f;
+                currentId = id;
+            }
         }
 
-        const neighbors = [
-            { x: 0, y: -1 }, { x: 0, y: 1 },
-            { x: -1, y: 0 }, { x: 1, y: 0 },
-            { x: -1, y: -1 }, { x: 1, y: -1 },
-            { x: -1, y: 1 }, { x: 1, y: 1 }
-        ];
+        if (currentId === endId) {
+            return this.reconstructPath(cameFrom, currentId, end);
+        }
 
-        for (const n of neighbors) {
-            const nx = current.x + n.x;
-            const ny = current.y + n.y;
+        openSet.delete(currentId);
+        const currentNode = getNode(currentId);
+        if (!currentNode) continue;
 
-            if (nx < 0 || nx >= GRID_SIZE || ny < 0 || ny >= GRID_SIZE) continue;
+        for (const neighborId of currentNode.adj) {
+            const neighborNode = getNode(neighborId);
+            if (!neighborNode) continue;
 
-            if (COLLISION_GRID[ny * GRID_SIZE + nx] === 1) continue;
+            const dist = this.heuristic(currentNode.pos, neighborNode.pos);
+            const tentativeG = (gScore.get(currentId) ?? Infinity) + dist;
 
-            if (n.x !== 0 && n.y !== 0) {
-                if (COLLISION_GRID[current.y * GRID_SIZE + nx] === 1 ||
-                    COLLISION_GRID[ny * GRID_SIZE + current.x] === 1) {
-                    continue;
+            if (tentativeG < (gScore.get(neighborId) ?? Infinity)) {
+                cameFrom.set(neighborId, currentId);
+                gScore.set(neighborId, tentativeG);
+                fScore.set(neighborId, tentativeG + this.heuristic(neighborNode.pos, endNodeInfo.pos));
+
+                if (!openSet.has(neighborId)) {
+                    openSet.add(neighborId);
                 }
             }
-
-            const moveCost = (n.x !== 0 && n.y !== 0) ? 1.414 : 1;
-            const g = current.g + moveCost;
-
-            const h = this.heuristic({x: nx, y: ny}, endGrid);
-
-            openSet.push({
-                x: nx,
-                y: ny,
-                g,
-                h,
-                parent: current
-            });
         }
     }
 
+    // No path found
     return [];
   }
 
-  private static heuristic(a: {x: number, y: number}, b: {x: number, y: number}): number {
-      const dx = a.x - b.x;
-      const dy = a.y - b.y;
-      return Math.sqrt(dx*dx + dy*dy);
+  private static heuristic(posA: [number, number], posB: [number, number]): number {
+      const dx = posA[0] - posB[0];
+      const dy = posA[1] - posB[1];
+      return Math.sqrt(dx * dx + dy * dy);
   }
 
-  private static reconstructPath(node: Node): Point[] {
+  private static reconstructPath(cameFrom: Map<number, number>, currentId: number, endTarget: Point): Point[] {
       const path: Point[] = [];
-      let current: Node | null = node;
 
-      while (current) {
-          path.unshift(this.gridToWorld(current.x, current.y));
-          current = current.parent;
-      }
+      // We don't necessarily add the exact mesh node coordinates if we want smooth movement,
+      // but for A* path it's usually nodes.
+      // We add the final target point at the end.
+      path.push(endTarget);
 
-      return this.smoothPath(path);
-  }
-
-  private static smoothPath(path: Point[]): Point[] {
-      if (path.length <= 2) return path;
-
-      const smoothed: Point[] = [path[0]];
-      let currentIdx = 0;
-
-      while (currentIdx < path.length - 1) {
-          let nextIdx = currentIdx + 1;
-          for (let i = path.length - 1; i > currentIdx + 1; i--) {
-              if (this.hasLineOfSight(path[currentIdx], path[i])) {
-                  nextIdx = i;
-                  break;
-              }
+      let curr = currentId;
+      while (cameFrom.has(curr)) {
+          const node = NAV_MESH[curr.toString()];
+          if (node) {
+              path.unshift({ x: node.pos[0], y: node.pos[1] });
           }
-          smoothed.push(path[nextIdx]);
-          currentIdx = nextIdx;
+          curr = cameFrom.get(curr)!;
       }
 
-      return smoothed;
+      // Note: We intentionally don't add the start node itself if the bot is already near it,
+      // but standard path reconstruction usually includes it.
+      // However, Bot.move typically consumes the path.
+
+      return path;
   }
-
-  static hasLineOfSight(start: Point, end: Point): boolean {
-      const x0 = Math.floor(start.x / CELL_SIZE);
-      const y0 = Math.floor(start.y / CELL_SIZE);
-      const x1 = Math.floor(end.x / CELL_SIZE);
-      const y1 = Math.floor(end.y / CELL_SIZE);
-
-      const dx = Math.abs(x1 - x0);
-      const dy = Math.abs(y1 - y0);
-      const sx = (x0 < x1) ? 1 : -1;
-      const sy = (y0 < y1) ? 1 : -1;
-      let err = dx - dy;
-
-      let x = x0;
-      let y = y0;
-
-      while (true) {
-          // Range check
-          if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
-             if (COLLISION_GRID[y * GRID_SIZE + x] === 1) return false;
-          }
-
-          if (x === x1 && y === y1) break;
-          const e2 = 2 * err;
-          if (e2 > -dy) { err -= dy; x += sx; }
-          if (e2 < dx) { err += dx; y += sy; }
-      }
-
-      return true;
-  }
-}
-
-interface Node {
-    x: number;
-    y: number;
-    g: number;
-    h: number;
-    parent: Node | null;
 }
