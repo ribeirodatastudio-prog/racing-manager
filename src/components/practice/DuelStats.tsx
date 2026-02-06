@@ -67,8 +67,8 @@ export const DuelStats: React.FC<DuelStatsProps> = ({ stats, players }) => {
 
             // 2. Monte Carlo
             const em = new EventManager(); // Dummy event manager for calculator
-            const b1 = new Bot(p1, TeamSide.T, "temp", em);
-            const b2 = new Bot(p2, TeamSide.CT, "temp", em);
+            const b1 = new Bot(p1, TeamSide.T, {x:0, y:0}, "temp", em);
+            const b2 = new Bot(p2, TeamSide.CT, {x:0, y:0}, "temp", em);
             const mc = DuelEngine.getWinProbability(b1, b2, 100);
 
             // 3. Aim Delta

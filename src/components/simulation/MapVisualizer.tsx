@@ -1,18 +1,16 @@
 import React from "react";
 import { GameMap } from "@/lib/engine/GameMap";
 import { Bot } from "@/lib/engine/Bot";
-import { ZoneState } from "@/lib/engine/MatchSimulator";
+import { ZoneState } from "@/lib/engine/types";
 
 interface MapVisualizerProps {
   map: GameMap;
   bots: Bot[];
-  zoneStates?: Record<string, ZoneState>; // Optional to support legacy usages
+  zoneStates?: Record<string, ZoneState>;
   selectedBotId?: string | null;
 }
 
 export const MapVisualizer: React.FC<MapVisualizerProps> = ({ map, bots, zoneStates, selectedBotId }) => {
-  const zones = map.getAllZones();
-
   // Collect Dropped Weapons
   const droppedWeaponsNodes: React.ReactNode[] = [];
   if (zoneStates) {
@@ -34,120 +32,64 @@ export const MapVisualizer: React.FC<MapVisualizerProps> = ({ map, bots, zoneSta
       });
   }
 
-  // Draw connections (Edges)
-  const drawnConnections = new Set<string>();
-  const connections: React.ReactNode[] = [];
-
-  zones.forEach((zone) => {
-    zone.connections.forEach((connection) => {
-      const target = map.getZone(connection.to);
-      if (target) {
-        const edgeId = [zone.id, target.id].sort().join("-");
-        if (!drawnConnections.has(edgeId)) {
-          drawnConnections.add(edgeId);
-          connections.push(
-            <line
-              key={edgeId}
-              x1={zone.x}
-              y1={zone.y}
-              x2={target.x}
-              y2={target.y}
-              stroke="#3f3f46" // zinc-700
-              strokeWidth="2"
-            />
-          );
-        }
-      }
-    });
-  });
-
   // Draw Path for Selected Bot
   const pathLines: React.ReactNode[] = [];
   if (selectedBotId) {
     const selectedBot = bots.find(b => b.id === selectedBotId);
     if (selectedBot && selectedBot.path && selectedBot.path.length > 0) {
-      // Draw line from current position to first path node
-      // Then from node to node
+      const points = [selectedBot.pos, ...selectedBot.path];
 
-      const fullPathIds = [selectedBot.currentZoneId, ...selectedBot.path];
-
-      for (let i = 0; i < fullPathIds.length - 1; i++) {
-        const z1 = map.getZone(fullPathIds[i]);
-        const z2 = map.getZone(fullPathIds[i+1]);
-        if (z1 && z2) {
-          pathLines.push(
+      for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i+1];
+        pathLines.push(
             <line
               key={`path-${selectedBot.id}-${i}`}
-              x1={z1.x}
-              y1={z1.y}
-              x2={z2.x}
-              y2={z2.y}
-              stroke={selectedBot.side === "T" ? "#eab308" : "#3b82f6"} // yellow-500 or blue-500
-              strokeWidth="4"
-              strokeDasharray="10,5"
+              x1={p1.x}
+              y1={p1.y}
+              x2={p2.x}
+              y2={p2.y}
+              stroke={selectedBot.side === "T" ? "#eab308" : "#3b82f6"}
+              strokeWidth="2"
+              strokeDasharray="5,5"
               className="opacity-80"
             />
-          );
-        }
+        );
       }
     }
   }
 
-  // Draw Cones of Vision
+  // Vision Cones (Simplified)
   const cones: React.ReactNode[] = [];
   bots.forEach((bot, index) => {
       if (bot.status === "DEAD") return;
-      // Only draw if selected or maybe for all? Requirement implies visualizer shows focus area.
-      // Let's show for all but maybe fainter for non-selected.
 
-      const zone = map.getZone(bot.currentZoneId);
-      if (!zone) return;
+      const offsetX = (index % 3) * 6 - 3;
+      const offsetY = Math.floor(index / 3) * 6 - 3;
 
-      const offsetX = (index % 3) * 15 - 7.5;
-      const offsetY = Math.floor(index / 3) * 15 - 7.5;
-
-      let baseX = zone.x;
-      let baseY = zone.y;
-
-      if (bot.targetZoneId) {
-        const to = map.getZone(bot.targetZoneId);
-        if (to) {
-          const dx = to.x - zone.x;
-          const dy = to.y - zone.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-
-          if (Number.isFinite(dist) && dist > 0) {
-            const t = Math.max(0, Math.min(1, bot.movementProgress / dist));
-            baseX = zone.x + dx * t;
-            baseY = zone.y + dy * t;
-          }
-        }
-      }
-
-      const startX = baseX + offsetX;
-      const startY = baseY + offsetY;
+      const startX = bot.pos.x + offsetX;
+      const startY = bot.pos.y + offsetY;
 
       let targetX = startX;
       let targetY = startY;
 
-      if (bot.focusZoneId) {
-          const targetZone = map.getZone(bot.focusZoneId);
-          if (targetZone) {
-              targetX = targetZone.x;
-              targetY = targetZone.y;
+      // Determine facing direction
+      if (bot.path.length > 0) {
+          targetX = bot.path[0].x;
+          targetY = bot.path[0].y;
+      } else if (bot.focusZoneId) {
+          // Look at focus zone centroid
+          const z = map.getZone(bot.focusZoneId);
+          if (z) {
+              targetX = z.x;
+              targetY = z.y;
           }
-      } else if (bot.goalZoneId && bot.goalZoneId !== bot.currentZoneId) {
-           const targetZone = map.getZone(bot.goalZoneId);
-           if (targetZone) {
-               targetX = targetZone.x;
-               targetY = targetZone.y;
-           }
       }
 
       if (targetX !== startX || targetY !== startY) {
           const angle = Math.atan2(targetY - startY, targetX - startX);
-          const length = 100; // Visual length
-          const width = Math.PI / 4; // 45 degrees
+          const length = 120;
+          const width = Math.PI / 3; // 60 deg
 
           const leftAngle = angle - width / 2;
           const rightAngle = angle + width / 2;
@@ -161,7 +103,6 @@ export const MapVisualizer: React.FC<MapVisualizerProps> = ({ map, bots, zoneSta
           const color = bot.side === "T" ? "fill-yellow-500" : "fill-blue-500";
           const opacity = isSelected ? "opacity-30" : "opacity-10";
 
-          // Path for sector
           const d = `M ${startX} ${startY} L ${x1} ${y1} A ${length} ${length} 0 0 1 ${x2} ${y2} Z`;
 
           cones.push(
@@ -175,37 +116,17 @@ export const MapVisualizer: React.FC<MapVisualizerProps> = ({ map, bots, zoneSta
   });
 
   return (
-    <div className="w-full h-full bg-zinc-900 border border-zinc-700 p-4 relative overflow-hidden rounded-none flex items-center justify-center">
-      <svg viewBox="0 0 1000 1200" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
-        {/* Connections */}
-        {connections}
+    <div className="w-full h-full bg-zinc-900 border border-zinc-700 relative overflow-hidden flex items-center justify-center">
+      <svg viewBox="0 0 1000 1000" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
+
+        {/* Map Background */}
+        <image href="/dust2_2d.png" width="1000" height="1000" />
 
         {/* Path Lines */}
         {pathLines}
 
         {/* Vision Cones */}
         {cones}
-
-        {/* Zones */}
-        {zones.map((zone) => (
-          <g key={zone.id}>
-            <circle
-              cx={zone.x}
-              cy={zone.y}
-              r={15}
-              className="fill-zinc-800 stroke-zinc-600"
-              strokeWidth="2"
-            />
-            <text
-              x={zone.x}
-              y={zone.y + 30}
-              textAnchor="middle"
-              className="fill-zinc-400 text-[20px] font-mono select-none"
-            >
-              {zone.name}
-            </text>
-          </g>
-        ))}
 
         {/* Dropped Weapons */}
         {droppedWeaponsNodes}
@@ -214,69 +135,48 @@ export const MapVisualizer: React.FC<MapVisualizerProps> = ({ map, bots, zoneSta
         {bots.map((bot, index) => {
           if (bot.status === "DEAD") return null;
 
-          const from = map.getZone(bot.currentZoneId);
-          if (!from) return null;
+          const offsetX = (index % 3) * 6 - 3;
+          const offsetY = Math.floor(index / 3) * 6 - 3;
 
-          // Offset based on index to reduce overlapping
-          const offsetX = (index % 3) * 15 - 7.5;
-          const offsetY = Math.floor(index / 3) * 15 - 7.5;
-
-          let baseX = from.x;
-          let baseY = from.y;
-
-          if (bot.targetZoneId) {
-            const to = map.getZone(bot.targetZoneId);
-            if (to) {
-              const dx = to.x - from.x;
-              const dy = to.y - from.y;
-              const dist = Math.sqrt(dx * dx + dy * dy);
-
-              if (Number.isFinite(dist) && dist > 0) {
-                const t = Math.max(0, Math.min(1, bot.movementProgress / dist));
-                baseX = from.x + dx * t;
-                baseY = from.y + dy * t;
-              }
-            }
-          }
-
-          // apply your offset after interpolation
-          const x = baseX + offsetX;
-          const y = baseY + offsetY;
+          // Use exact position + offset
+          const x = bot.pos.x + offsetX;
+          const y = bot.pos.y + offsetY;
 
           const isSelected = bot.id === selectedBotId;
 
           return (
             <g key={bot.id}>
-              {/* Highlight Circle if selected */}
               {isSelected && (
                  <circle
                    cx={x}
                    cy={y}
-                   r={18}
+                   r={14}
                    className="fill-none stroke-white"
-                   strokeWidth="3"
+                   strokeWidth="2"
                  />
               )}
 
               <circle
                 cx={x}
                 cy={y}
-                r={10}
-                className={bot.side === "T" ? "fill-yellow-500" : "fill-blue-500"}
+                r={8}
+                className={bot.side === "T" ? "fill-yellow-500 stroke-black" : "fill-blue-500 stroke-black"}
+                strokeWidth="1"
               />
+
               {/* HP Bar */}
               <rect
-                x={x - 10}
-                y={y - 15}
-                width={20}
-                height={4}
+                x={x - 8}
+                y={y - 12}
+                width={16}
+                height={3}
                 className="fill-red-900"
               />
               <rect
-                x={x - 10}
-                y={y - 15}
-                width={20 * (bot.hp / 100)}
-                height={4}
+                x={x - 8}
+                y={y - 12}
+                width={16 * (bot.hp / 100)}
+                height={3}
                 className="fill-green-500"
               />
             </g>

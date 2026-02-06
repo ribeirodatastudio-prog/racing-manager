@@ -1,3 +1,8 @@
+export interface Point {
+  x: number;
+  y: number;
+}
+
 export interface Connection {
   to: string;
   sightline: boolean;
@@ -94,4 +99,10 @@ export interface DroppedWeapon {
   zoneId: string;
   x: number; // For visualization within the zone
   y: number;
+}
+
+export interface ZoneState {
+    noiseLevel: number;
+    droppedWeapons: DroppedWeapon[];
+    smokedUntilTick?: number;
 }

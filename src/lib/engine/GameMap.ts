@@ -1,4 +1,6 @@
-import { MapData, Zone, Connection } from "./types";
+import { MapData, Zone, Connection, Point } from "./types";
+import { Pathfinder } from "./Pathfinder";
+import { MAP_WIDTH, MAP_HEIGHT } from "./maps/dust2_collisions";
 
 export class GameMap {
   private zones: Map<string, Zone>;
@@ -16,6 +18,7 @@ export class GameMap {
     return this.zones.get(id);
   }
 
+  // Strategic Neighbors (from graph data)
   getNeighbors(zoneId: string): Zone[] {
     const zone = this.getZone(zoneId);
     if (!zone) return [];
@@ -40,18 +43,62 @@ export class GameMap {
     return this.getZone(spawnId);
   }
 
+  // Euclidean Distance between two zones (centroids)
   getDistance(zoneId1: string, zoneId2: string): number {
     const z1 = this.getZone(zoneId1);
     const z2 = this.getZone(zoneId2);
-
     if (!z1 || !z2) return Infinity;
+    return this.getPointDistance(z1, z2);
+  }
 
-    if (![z1.x, z1.y, z2.x, z2.y].every(Number.isFinite)) return Infinity;
+  getPointDistance(p1: Point, p2: Point): number {
+    const dx = p1.x - p2.x;
+    const dy = p1.y - p2.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
 
-    const dx = z1.x - z2.x;
-    const dy = z1.y - z2.y;
-    const d = Math.sqrt(dx * dx + dy * dy);
+  // --- Pathfinding & Collision ---
 
-    return Number.isFinite(d) ? d : Infinity;
+  isWalkable(x: number, y: number): boolean {
+    return Pathfinder.isWalkable(x, y);
+  }
+
+  findPath(start: Point, end: Point): Point[] {
+    return Pathfinder.findPath(start, end);
+  }
+
+  // Find nearest valid walkable point (if spawned in wall)
+  getNearestWalkable(p: Point, radius: number = 50): Point {
+      if (this.isWalkable(p.x, p.y)) return p;
+
+      // Spiral search
+      for (let r = 5; r <= radius; r += 5) {
+          for (let angle = 0; angle < 360; angle += 45) {
+              const rad = angle * (Math.PI / 180);
+              const testX = p.x + Math.cos(rad) * r;
+              const testY = p.y + Math.sin(rad) * r;
+              if (this.isWalkable(testX, testY)) {
+                  return { x: testX, y: testY };
+              }
+          }
+      }
+      return p; // Failed
+  }
+
+  // Helper to find which zone a point is technically "in"
+  // Simple nearest neighbor to zone centroid
+  getZoneAt(p: Point): Zone | undefined {
+      let closest: Zone | undefined;
+      let minDst = Infinity;
+
+      for (const zone of this.zones.values()) {
+          const dst = this.getPointDistance(p, zone);
+          // Optimization: Check if within reasonable range (e.g. 200 units)
+          if (dst < minDst) {
+              minDst = dst;
+              closest = zone;
+          }
+      }
+      return closest;
   }
 }
