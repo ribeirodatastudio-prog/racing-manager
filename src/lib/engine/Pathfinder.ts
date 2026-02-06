@@ -1,109 +1,180 @@
-import { GameMap } from "./GameMap";
-import { Zone } from "./types";
+import { COLLISION_GRID, GRID_SIZE, MAP_WIDTH, MAP_HEIGHT } from "./maps/dust2_collisions";
+import { Point } from "./types";
 
-interface QueueNode {
-  zoneId: string;
-  priority: number;
-}
+const CELL_SIZE = MAP_WIDTH / GRID_SIZE; // 5
 
 export class Pathfinder {
-  /**
-   * Finds the shortest path (fewest hops) between startZoneId and endZoneId.
-   * @param prioritizeCover If true, adds penalty for zones with low cover to encourage safe routes.
-   */
-  static findPath(map: GameMap, startZoneId: string, endZoneId: string, prioritizeCover: boolean = false): string[] | null {
-    if (startZoneId === endZoneId) return [startZoneId];
-
-    const startZone = map.getZone(startZoneId);
-    const endZone = map.getZone(endZoneId);
-
-    if (!startZone || !endZone) return null;
-
-    const frontier: QueueNode[] = [{ zoneId: startZoneId, priority: 0 }];
-    const cameFrom: Record<string, string | null> = {};
-    const costSoFar: Record<string, number> = {};
-
-    cameFrom[startZoneId] = null;
-    costSoFar[startZoneId] = 0;
-
-    while (frontier.length > 0) {
-      // Sort descending and pop (simple priority queue)
-      // Note: For A*, we want lowest priority value (cost + heuristic).
-      // Here priority represents cost. We pop the lowest cost.
-      frontier.sort((a, b) => b.priority - a.priority);
-      const current = frontier.pop()!;
-
-      if (current.zoneId === endZoneId) {
-        break;
-      }
-
-      const neighbors = map.getNeighbors(current.zoneId);
-      for (const next of neighbors) {
-        // Base cost is 1 (hop).
-        // If prioritizeCover, add penalty for low cover.
-        // Penalty: (1 - cover) * 5.  (Cover 0.0 -> +5 cost. Cover 1.0 -> +0 cost).
-        // Heavily penalize open areas.
-        const stepCost = 1 + (prioritizeCover ? (1 - (next.cover || 0)) * 5 : 0);
-
-        const newCost = costSoFar[current.zoneId] + stepCost;
-
-        if (!(next.id in costSoFar) || newCost < costSoFar[next.id]) {
-          costSoFar[next.id] = newCost;
-          // Heuristic: Euclidean distance / 100 (rough scale) to guide it, or just 0 for Dijkstra
-          // Let's use 0 for now to guarantee shortest hop path (or safest path)
-          const priority = newCost;
-          frontier.push({ zoneId: next.id, priority });
-          cameFrom[next.id] = current.zoneId;
-        }
-      }
-    }
-
-    if (!(endZoneId in cameFrom)) {
-      return null; // No path found
-    }
-
-    // Reconstruct path
-    const path: string[] = [];
-    let curr: string | null = endZoneId;
-    while (curr !== null) {
-      path.push(curr);
-      curr = cameFrom[curr];
-    }
-
-    return path.reverse();
+  static worldToGrid(p: Point): { x: number; y: number } {
+    return {
+      x: Math.floor(Math.max(0, Math.min(MAP_WIDTH - 1, p.x)) / CELL_SIZE),
+      y: Math.floor(Math.max(0, Math.min(MAP_HEIGHT - 1, p.y)) / CELL_SIZE),
+    };
   }
 
-  /**
-   * Finds the zone furthest from the startZoneId (in terms of hops).
-   * Used for "Save" logic.
-   */
-  static findFurthestZone(map: GameMap, startZoneId: string): string | null {
-    const startZone = map.getZone(startZoneId);
-    if (!startZone) return null;
+  static gridToWorld(gx: number, gy: number): Point {
+    return {
+      x: (gx * CELL_SIZE) + (CELL_SIZE / 2),
+      y: (gy * CELL_SIZE) + (CELL_SIZE / 2),
+    };
+  }
 
-    const queue: { id: string; dist: number }[] = [{ id: startZoneId, dist: 0 }];
-    const visited = new Set<string>([startZoneId]);
+  static isWalkable(x: number, y: number): boolean {
+    if (x < 0 || x >= MAP_WIDTH || y < 0 || y >= MAP_HEIGHT) return false;
 
-    let furthestZoneId = startZoneId;
-    let maxDist = 0;
+    const gx = Math.floor(x / CELL_SIZE);
+    const gy = Math.floor(y / CELL_SIZE);
 
-    while (queue.length > 0) {
-      const { id, dist } = queue.shift()!;
+    if (gx < 0 || gx >= GRID_SIZE || gy < 0 || gy >= GRID_SIZE) return false;
 
-      if (dist > maxDist) {
-        maxDist = dist;
-        furthestZoneId = id;
-      }
+    return COLLISION_GRID[gy * GRID_SIZE + gx] === 0;
+  }
 
-      const neighbors = map.getNeighbors(id);
-      for (const next of neighbors) {
-        if (!visited.has(next.id)) {
-          visited.add(next.id);
-          queue.push({ id: next.id, dist: dist + 1 });
-        }
-      }
+  static findPath(start: Point, end: Point): Point[] {
+    const startGrid = this.worldToGrid(start);
+    const endGrid = this.worldToGrid(end);
+
+    if (!this.isWalkable(end.x, end.y)) {
     }
 
-    return furthestZoneId;
+    const openSet: Node[] = [];
+    const closedSet = new Set<string>();
+
+    const startNode: Node = {
+        x: startGrid.x,
+        y: startGrid.y,
+        g: 0,
+        h: this.heuristic(startGrid, endGrid),
+        parent: null
+    };
+
+    openSet.push(startNode);
+
+    while (openSet.length > 0) {
+        openSet.sort((a, b) => (a.g + a.h) - (b.g + b.h));
+        const current = openSet.shift()!;
+
+        const key = `${current.x},${current.y}`;
+        if (closedSet.has(key)) continue;
+        closedSet.add(key);
+
+        if (current.x === endGrid.x && current.y === endGrid.y) {
+            return this.reconstructPath(current);
+        }
+
+        const neighbors = [
+            { x: 0, y: -1 }, { x: 0, y: 1 },
+            { x: -1, y: 0 }, { x: 1, y: 0 },
+            { x: -1, y: -1 }, { x: 1, y: -1 },
+            { x: -1, y: 1 }, { x: 1, y: 1 }
+        ];
+
+        for (const n of neighbors) {
+            const nx = current.x + n.x;
+            const ny = current.y + n.y;
+
+            if (nx < 0 || nx >= GRID_SIZE || ny < 0 || ny >= GRID_SIZE) continue;
+
+            if (COLLISION_GRID[ny * GRID_SIZE + nx] === 1) continue;
+
+            if (n.x !== 0 && n.y !== 0) {
+                if (COLLISION_GRID[current.y * GRID_SIZE + nx] === 1 ||
+                    COLLISION_GRID[ny * GRID_SIZE + current.x] === 1) {
+                    continue;
+                }
+            }
+
+            const moveCost = (n.x !== 0 && n.y !== 0) ? 1.414 : 1;
+            const g = current.g + moveCost;
+
+            const h = this.heuristic({x: nx, y: ny}, endGrid);
+
+            openSet.push({
+                x: nx,
+                y: ny,
+                g,
+                h,
+                parent: current
+            });
+        }
+    }
+
+    return [];
   }
+
+  private static heuristic(a: {x: number, y: number}, b: {x: number, y: number}): number {
+      const dx = a.x - b.x;
+      const dy = a.y - b.y;
+      return Math.sqrt(dx*dx + dy*dy);
+  }
+
+  private static reconstructPath(node: Node): Point[] {
+      const path: Point[] = [];
+      let current: Node | null = node;
+
+      while (current) {
+          path.unshift(this.gridToWorld(current.x, current.y));
+          current = current.parent;
+      }
+
+      return this.smoothPath(path);
+  }
+
+  private static smoothPath(path: Point[]): Point[] {
+      if (path.length <= 2) return path;
+
+      const smoothed: Point[] = [path[0]];
+      let currentIdx = 0;
+
+      while (currentIdx < path.length - 1) {
+          let nextIdx = currentIdx + 1;
+          for (let i = path.length - 1; i > currentIdx + 1; i--) {
+              if (this.hasLineOfSight(path[currentIdx], path[i])) {
+                  nextIdx = i;
+                  break;
+              }
+          }
+          smoothed.push(path[nextIdx]);
+          currentIdx = nextIdx;
+      }
+
+      return smoothed;
+  }
+
+  static hasLineOfSight(start: Point, end: Point): boolean {
+      const x0 = Math.floor(start.x / CELL_SIZE);
+      const y0 = Math.floor(start.y / CELL_SIZE);
+      const x1 = Math.floor(end.x / CELL_SIZE);
+      const y1 = Math.floor(end.y / CELL_SIZE);
+
+      const dx = Math.abs(x1 - x0);
+      const dy = Math.abs(y1 - y0);
+      const sx = (x0 < x1) ? 1 : -1;
+      const sy = (y0 < y1) ? 1 : -1;
+      let err = dx - dy;
+
+      let x = x0;
+      let y = y0;
+
+      while (true) {
+          // Range check
+          if (x >= 0 && x < GRID_SIZE && y >= 0 && y < GRID_SIZE) {
+             if (COLLISION_GRID[y * GRID_SIZE + x] === 1) return false;
+          }
+
+          if (x === x1 && y === y1) break;
+          const e2 = 2 * err;
+          if (e2 > -dy) { err -= dy; x += sx; }
+          if (e2 < dx) { err += dx; y += sy; }
+      }
+
+      return true;
+  }
+}
+
+interface Node {
+    x: number;
+    y: number;
+    g: number;
+    h: number;
+    parent: Node | null;
 }
