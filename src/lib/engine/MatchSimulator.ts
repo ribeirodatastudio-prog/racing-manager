@@ -542,7 +542,7 @@ export class MatchSimulator {
            const moveAmount = effectiveSpeed * 0.1;
 
            bot.movementProgress += moveAmount;
-           console.log(`${bot.player.name} progress: ${bot.movementProgress}/${distance}`);
+           // console.log(`${bot.player.name} progress: ${bot.movementProgress}/${distance}`);
 
            if (bot.movementProgress >= distance) {
                // Arrived - Check Zone Capacity
@@ -553,7 +553,8 @@ export class MatchSimulator {
                const isVip = bot.hasBomb;
 
                // Fix: Disable Rerouting if Bomb Planted (Allow flooding)
-               if (totalInTarget >= 4 && this.bomb.status !== BombStatus.PLANTED) {
+               // Increased capacity to 6 to prevent bottlenecks in granular zones
+               if (totalInTarget >= 6 && this.bomb.status !== BombStatus.PLANTED) {
                    if (isVip) {
                        // VIP Displacement Logic
                        const friendlyBotsInTarget = this.bots.filter(b =>
@@ -1329,7 +1330,7 @@ export class MatchSimulator {
       } else if (this.roundTimer <= 40) {
           urgencyScore += 30; // Very urgent
       } else if (this.roundTimer <= 60) {
-          urgencyScore += 15; // Starting to be urgent
+          urgencyScore += 25; // Moderate urgency (start execution earlier on large map)
       }
 
       // 2. PLAYER DISADVANTAGE (0-30 points)
@@ -1338,12 +1339,12 @@ export class MatchSimulator {
       }
 
       // 3. POSITION STALL DETECTION (0-30 points)
+      // Check for bots stuck in the new granular mid zones
+      const midZones = ["upper_mid", "xbox", "suicide", "lower_mid", "top_mid", "mid_doors", "catwalk_lower", "catwalk_upper"];
       const botsInMid = this.bots.filter(b =>
           b.side === TeamSide.T &&
           b.status === "ALIVE" &&
-          (b.currentZoneId.includes("mid") ||
-           b.currentZoneId.includes("catwalk") ||
-           b.currentZoneId === "top_mid")
+          (midZones.includes(b.currentZoneId))
       ).length;
 
       // If majority of team stuck in mid with time running
@@ -1441,35 +1442,59 @@ export class MatchSimulator {
       const bots = this.bots.filter(b => b.side === side && b.status === "ALIVE");
       if (bots.length === 0) return 0;
 
+      // Expanded Progress Map for Granular Zones
       const progressMap: Record<string, number> = {
           // T Spawn & Initial
           "t_spawn": 0,
           "outside_tunnels": 10,
           "outside_long": 15,
 
-          // Mid-map positioning
+          // Mid-map positioning (More steps now)
+          "top_mid": 20,
+          "upper_mid": 30,
+          "xbox": 40,
+          "suicide": 50,
+          "lower_mid": 50, // Alternative mid path
+
+          // Tunnels
           "upper_tunnels": 25,
           "lower_tunnels": 30,
-          "mid_doors": 35,
-          "top_mid": 40,
-          "catwalk": 45,
+          "b_tunnels": 65,
 
-          // Approaching sites
-          "long_doors": 60,
+          // Catwalk / Short
+          "catwalk_lower": 60,
+          "catwalk_upper": 70,
+          "a_short": 85,
+
+          // Long A
+          "long_doors": 30,
+          "long_corner": 45,
+          "long_pit": 60,
           "long_a": 75,
-          "a_short": 70,
-          "a_ramp": 80,
+          "a_ramp": 85,
+
+          // Mid to B/CT
+          "ct_mid": 60,
+          "mid_doors": 65,
+          "connector": 70,
+
+          // B Approach
           "b_doors": 55,
           "b_window": 60,
-          "b_tunnels": 65,
 
           // Sites
           "a_site": 100,
+          "a_default": 100,
+          "a_boxes": 100,
           "b_site": 100,
+          "b_default": 100,
+          "b_back_plat": 100,
+          "b_closet": 100,
 
           // CT Side
           "ct_spawn": 0,
-          // ... add CT zones if needed
+          "ct_ramp": 90,
+          "ct_cat": 80
       };
 
       const totalProgress = bots.reduce((sum, bot) => {
@@ -1533,12 +1558,15 @@ export class MatchSimulator {
   private isDefendingSite(zoneId: string, site: "A" | "B"): boolean {
       const defensiveZones = {
           A: [
-              "a_site", "a_ramp", "a_short", "long_a", "long_doors",
-              "catwalk", "top_mid" // Catwalk/Top can watch A
+              "a_site", "a_default", "a_boxes", "a_ramp", "a_short",
+              "long_a", "long_doors", "long_corner", "long_pit",
+              "catwalk_upper", "catwalk_lower", "ct_cat", "ct_ramp",
+              "top_mid" // Watching mid
           ],
           B: [
-              "b_site", "b_doors", "b_window", "b_tunnels",
-              "mid_doors", "lower_tunnels" // Mid can watch B
+              "b_site", "b_default", "b_back_plat", "b_closet",
+              "b_doors", "b_window", "b_tunnels", "connector",
+              "mid_doors", "lower_tunnels", "ct_mid" // Watching mid
           ]
       };
 
@@ -1553,6 +1581,7 @@ export class MatchSimulator {
       const path = Pathfinder.findPath(this.map, currentZone, targetZone, false);
 
       // If path exists and is short (1-2 zones away), consider it approaching
-      return path !== null && path.length > 0 && path.length <= 3;
+      // Adjusted for higher granularity (was 3)
+      return path !== null && path.length > 0 && path.length <= 8;
   }
 }

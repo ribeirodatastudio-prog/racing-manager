@@ -466,7 +466,7 @@ export class Bot {
          // And "CTs at the opposite site should move to 'Aggressive Hold' positions"
 
          // Check for High Threat in Transition Zones
-         const transitionZones = ["mid_doors", "catwalk", "lower_tunnels", "long_doors"];
+         const transitionZones = ["mid_doors", "catwalk_lower", "lower_tunnels", "long_doors"];
          let criticalTransition: string | null = null;
 
          for (const tz of transitionZones) {
@@ -501,7 +501,7 @@ export class Bot {
                      }
                  }
                  // If critical is Catwalk (near A):
-                 if (criticalTransition === "catwalk") {
+                 if (criticalTransition === "catwalk_lower") {
                       if (this.currentZoneId === map.data.bombSites.A) {
                           // Push Short
                           desiredGoal = "a_short";
@@ -520,11 +520,11 @@ export class Bot {
             let otherSite = "";
 
             if (distToB < distToA) {
-                const aZones = ["long_doors", "a_ramp", "a_site", "a_short"];
+                const aZones = ["long_doors", "long_corner", "long_pit", "a_ramp", "a_site", "a_default", "a_boxes", "a_short", "catwalk_upper", "ct_ramp"];
                 aZones.forEach(z => targetSiteNoise += (zoneStates[z]?.noiseLevel || 0));
                 otherSite = map.data.bombSites.A;
             } else {
-                const bZones = ["upper_tunnels", "b_tunnels", "b_site", "mid_doors"];
+                const bZones = ["upper_tunnels", "b_tunnels", "b_site", "b_default", "b_back_plat", "b_closet", "b_window", "b_doors", "connector", "mid_doors", "ct_mid"];
                 bZones.forEach(z => targetSiteNoise += (zoneStates[z]?.noiseLevel || 0));
                 otherSite = map.data.bombSites.B;
             }
