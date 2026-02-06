@@ -1,16 +1,73 @@
-import React from "react";
+import React, { useMemo } from "react";
 import { GameMap } from "@/lib/engine/GameMap";
 import { Bot } from "@/lib/engine/Bot";
 import { ZoneState } from "@/lib/engine/types";
+import { NAV_MESH, transformGameToSVG } from "@/lib/utils/navMesh";
 
 interface MapVisualizerProps {
   map: GameMap;
   bots: Bot[];
   zoneStates?: Record<string, ZoneState>;
   selectedBotId?: string | null;
+  showNavMesh?: boolean;
 }
 
-export const MapVisualizer: React.FC<MapVisualizerProps> = ({ map, bots, zoneStates, selectedBotId }) => {
+export const MapVisualizer: React.FC<MapVisualizerProps> = ({ map, bots, zoneStates, selectedBotId, showNavMesh }) => {
+  // Render Nav Mesh
+  const navMeshNodes = useMemo(() => {
+    if (!showNavMesh) return null;
+
+    const nodes: React.ReactNode[] = [];
+    const edges: React.ReactNode[] = [];
+
+    Object.entries(NAV_MESH).forEach(([id, node]) => {
+      const { x, y } = transformGameToSVG(node.pos[0], node.pos[1]);
+      const nodeId = parseInt(id);
+
+      // Render Node
+      nodes.push(
+        <circle
+          key={`node-${id}`}
+          cx={x}
+          cy={y}
+          r={2}
+          fill="rgba(0, 255, 255, 0.6)"
+          className="hover:r-4 transition-all"
+        >
+          <title>Node {id}</title>
+        </circle>
+      );
+
+      // Render Edges (Dedup: only if current node ID < neighbor ID)
+      node.adj.forEach((neighborId) => {
+        if (nodeId < neighborId) {
+          const neighbor = NAV_MESH[neighborId.toString()];
+          if (neighbor) {
+            const { x: nx, y: ny } = transformGameToSVG(neighbor.pos[0], neighbor.pos[1]);
+            edges.push(
+              <line
+                key={`edge-${id}-${neighborId}`}
+                x1={x}
+                y1={y}
+                x2={nx}
+                y2={ny}
+                stroke="rgba(0, 255, 255, 0.3)"
+                strokeWidth="0.5"
+              />
+            );
+          }
+        }
+      });
+    });
+
+    return (
+      <g className="nav-mesh-layer pointer-events-none">
+        {edges}
+        <g className="pointer-events-auto">{nodes}</g>
+      </g>
+    );
+  }, [showNavMesh]);
+
   // Collect Dropped Weapons
   const droppedWeaponsNodes: React.ReactNode[] = [];
   if (zoneStates) {
@@ -121,6 +178,9 @@ export const MapVisualizer: React.FC<MapVisualizerProps> = ({ map, bots, zoneSta
 
         {/* Map Background */}
         <image href="/dust2_2d.png" width="1000" height="1000" />
+
+        {/* Nav Mesh Layer */}
+        {navMeshNodes}
 
         {/* Path Lines */}
         {pathLines}
