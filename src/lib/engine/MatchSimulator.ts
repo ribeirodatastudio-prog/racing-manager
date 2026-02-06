@@ -865,11 +865,12 @@ export class MatchSimulator {
           if (e.actor.status === "DEAD") continue; // Actor died before shooting
 
           if (e.damage > 0) {
+              const wasAlive = e.victim.status === "ALIVE";
               e.victim.takeDamage(e.damage);
               this.stats[e.actor.id].damageDealt += e.damage;
               this.stats[e.actor.id].expectedKills += DuelEngine.getWinProbability(e.actor, e.victim, this.map.getDistance(e.actor.currentZoneId, e.victim.currentZoneId), 10).initiatorWinRate; // Approximation
 
-              if (e.victim.hp <= 0 && e.victim.status === "ALIVE") {
+              if (e.victim.hp <= 0 && wasAlive) {
                    this.handleKill(e.actor, e.victim, e.result.isHeadshot, e.actor.getEquippedWeapon());
               }
           }
