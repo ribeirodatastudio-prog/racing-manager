@@ -6,9 +6,9 @@ import { Bomb, BombStatus } from "./Bomb";
 import { WeaponManager } from "./WeaponManager";
 import { Weapon } from "@/types/Weapon";
 import { EventManager, GameEvent } from "./EventManager";
-import { DroppedWeapon, Point, ZoneState } from "./types";
+import { Point, ZoneState } from "./types";
 import { TacticalAI, AngleToClear } from "./TacticalAI";
-import { CS2_MOVEMENT_SPEEDS, TACTICAL_BEHAVIORS, TICK_DURATION } from "./cs2Constants";
+import { CS2_MOVEMENT_SPEEDS, TACTICAL_BEHAVIORS } from "./cs2Constants";
 
 export type BotStatus = "ALIVE" | "DEAD";
 
@@ -410,7 +410,7 @@ export class Bot {
     }
   }
 
-  updateTacticalBehavior(map: GameMap, allBots: Bot[], currentTick: number) {
+  updateTacticalBehavior(map: GameMap, _allBots: Bot[], currentTick: number) {
     if (this.status === "DEAD") return;
 
     // Decrease hold duration
@@ -472,7 +472,7 @@ export class Bot {
     }
   }
 
-  private processClearingAngle(currentTick: number) {
+  private processClearingAngle(_currentTick: number) {
     if (this.currentAngleIndex >= this.anglesToClear.length) {
       // All angles cleared
       this.hasClearedAngles = true;
@@ -498,7 +498,7 @@ export class Bot {
     this.currentAngleIndex++;
   }
 
-  private triggerPrefire(target: Point) {
+  private triggerPrefire(_target: Point) {
     // Implement pre-fire logic
     // Just marking it for now, can be used by combat system if needed
     // console.log(`Bot ${this.id} pre-firing at position (${target.x}, ${target.y})`);

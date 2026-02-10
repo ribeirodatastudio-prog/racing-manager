@@ -5,8 +5,7 @@ import { TacticsManager, TeamSide, Tactic } from "./TacticsManager";
 import { DuelEngine, DuelResult } from "./DuelEngine";
 import { Player } from "@/types";
 import { DUST2_MAP } from "./maps/dust2";
-import { MatchState, MatchPhase, RoundEndReason, BuyStrategy, DroppedWeapon, ZoneState, PlayerMatchStats } from "./types";
-import { EconomySystem } from "./EconomySystem";
+import { MatchState, MatchPhase, RoundEndReason, BuyStrategy, ZoneState, PlayerMatchStats } from "./types";
 import { TeamEconomyManager } from "./TeamEconomyManager";
 import { ECONOMY, WEAPONS, WeaponType } from "./constants";
 import { DUST2_LOCATIONS, TICK_RATE, TICK_DURATION } from "./cs2Constants";
@@ -801,7 +800,7 @@ export class MatchSimulator {
           // Multi-Kills
           const kills = this.roundKillsCount[bot.id] || 0;
           if (kills >= 1 && kills <= 5) {
-               // @ts-ignore
+               // @ts-expect-error - stats.multiKills is a fixed record, but kills is a number
                stats.multiKills[kills]++;
           } else if (kills > 5) {
                stats.multiKills[5]++; // Cap at 5
@@ -818,7 +817,7 @@ export class MatchSimulator {
       });
   }
 
-  private updateEconomy(winner: TeamSide, reason: RoundEndReason) {
+  private updateEconomy(_winner: TeamSide, _reason: RoundEndReason) {
       this.bots.forEach(b => {
           if (b.player.inventory) b.player.inventory.money += 3000;
       });

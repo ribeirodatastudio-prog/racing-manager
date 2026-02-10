@@ -65,7 +65,7 @@ export function calculateVRSPoints(
   // Sort results by date (most recent first)
   const sortedResults = [...teamResults].sort((a, b) => b.date.getTime() - a.date.getTime());
 
-  sortedResults.forEach((result, index) => {
+  sortedResults.forEach((result) => {
     const daysSince = Math.floor(
       (currentDate.getTime() - result.date.getTime()) / (1000 * 60 * 60 * 24)
     );
@@ -122,7 +122,7 @@ export function calculateVRSPoints(
 /**
  * Get multiplier based on tournament placement
  */
-function getPlacementMultiplier(placement: number, totalTeams: number): number {
+function getPlacementMultiplier(placement: number, _totalTeams: number): number {
   // 1st place gets full prize pool credit
   // Lower placements get proportionally less
   if (placement === 1) return 1.0;
@@ -200,7 +200,7 @@ export function calculateVRSRankings(
 /**
  * Get VRS tier/region qualification status
  */
-export function getVRSTier(rank: number, region: string): {
+export function getVRSTier(rank: number, _region: string): {
   tier: string;
   qualificationStatus: string;
   color: string;
