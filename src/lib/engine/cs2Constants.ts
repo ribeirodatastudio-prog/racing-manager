@@ -79,7 +79,7 @@ export const DUST2_COORDINATES = {
   NAV_MIN_X: -2200,
   NAV_MAX_X: 1700,
   NAV_MIN_Y: -3700,
-  NAV_MAX_Y: 900,
+  NAV_MAX_Y: 1200, // Extended to cover T Spawn (approx 950-970)
   // Visual map dimensions (pixels)
   VISUAL_WIDTH: 1024,
   VISUAL_HEIGHT: 1024,

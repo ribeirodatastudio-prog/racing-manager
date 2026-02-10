@@ -11,6 +11,7 @@ import { TacticalAI, AngleToClear } from "./TacticalAI";
 import { CS2_MOVEMENT_SPEEDS, TACTICAL_BEHAVIORS } from "./cs2Constants";
 import { BotVisionSystem, VisibleEntity } from "./BotVisionSystem";
 import { enhancedNavMeshManager, NavNode } from "./EnhancedNavMeshManager";
+import { tacticalGridManager } from "./TacticalGridManager";
 
 export type BotStatus = "ALIVE" | "DEAD";
 
@@ -350,6 +351,38 @@ export class Bot {
       return totalThreat;
   }
 
+  /**
+   * Determine if we should use tactical grid movement (A*) or standard NavMesh
+   */
+  private shouldUseTacticalMovement(): boolean {
+      if (!tacticalGridManager.ready) return false;
+
+      // Use tactical movement if:
+      // 1. We know about threats (internal threat map populated)
+      // 2. We are in a tactical state (Clearing angles, Holding, or Waiting for split)
+      // 3. We are visible to enemies (handled by threat map usually, but explicit check could be good)
+
+      if (this.internalThreatMap.size > 0) return true;
+      if (this.aiState === BotAIState.HOLDING_ANGLE) return true;
+      if (this.aiState === BotAIState.WAITING_FOR_SPLIT) return true;
+      if (!this.hasClearedAngles && this.anglesToClear.length > 0) return true;
+
+      return false;
+  }
+
+  /**
+   * Calculate path to target using appropriate system
+   */
+  private calculatePath(map: GameMap, target: Point): Point[] {
+      if (this.shouldUseTacticalMovement()) {
+          const tPath = tacticalGridManager.findTacticalPath(this.pos, target, this.side, {
+              dangerPenalty: 50
+          });
+          if (tPath.length > 0) return tPath;
+      }
+      return map.findPath(this.pos, target);
+  }
+
   updateGoal(map: GameMap, bomb: Bomb, tacticsManager: TacticsManager, zoneStates: Record<string, ZoneState>, currentTick: number = 0, allBots: Bot[] = []) {
     if (this.status === "DEAD") return;
 
@@ -386,7 +419,7 @@ export class Bot {
          if (this.goalZoneId) {
              const goalZone = map.getZone(this.goalZoneId);
              if (goalZone) {
-                const newPath = map.findPath(this.pos, {x: goalZone.x, y: goalZone.y});
+                const newPath = this.calculatePath(map, {x: goalZone.x, y: goalZone.y});
                 if (newPath.length > 0) this.path = newPath;
              }
          }
@@ -425,7 +458,7 @@ export class Bot {
 
         const goalZone = map.getZone(desiredGoalId);
         if (goalZone) {
-            this.path = map.findPath(this.pos, {x: goalZone.x, y: goalZone.y});
+            this.path = this.calculatePath(map, {x: goalZone.x, y: goalZone.y});
         }
     }
   }
@@ -525,7 +558,7 @@ export class Bot {
         // Path to hold position if not there
         const dist = this.distanceTo(holdPos.position);
         if (dist > 10) {
-          this.path = map.findPath(this.pos, holdPos.position);
+          this.path = this.calculatePath(map, holdPos.position);
         }
       }
     }
