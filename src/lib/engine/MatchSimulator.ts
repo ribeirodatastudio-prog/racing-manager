@@ -9,6 +9,7 @@ import { TeamEconomyManager } from "./TeamEconomyManager";
 import { ECONOMY, WEAPONS, WeaponType } from "./constants";
 import { DUST2_LOCATIONS, TICK_RATE, TICK_DURATION } from "./cs2Constants";
 import { enhancedNavMeshManager } from "./EnhancedNavMeshManager";
+import { tacticalGridManager } from "./TacticalGridManager";
 import { BotVisionSystem } from "./BotVisionSystem";
 import { WeaponUtils } from "./WeaponUtils";
 import { Bomb, BombStatus } from "./Bomb";
@@ -379,6 +380,25 @@ export class MatchSimulator {
   }
 
   private tickLive() {
+    // Initialize Tactical Grid if needed
+    if (!tacticalGridManager.ready && enhancedNavMeshManager.isNavMeshLoaded()) {
+        tacticalGridManager.initializeGrid();
+    }
+
+    // Update Tactical Grid Sector Data (once per tick or throttled?)
+    // Doing it every tick is safest for moving targets, but might be heavy.
+    // Given the optimization (only checking walkable nodes against visible enemies), it should be fast enough for <10 bots.
+    if (tacticalGridManager.ready) {
+        tacticalGridManager.updateSectorData(
+            this.bots.map(b => ({
+                id: b.id,
+                pos: b.pos,
+                isAlive: b.status === "ALIVE",
+                team: b.side
+            }))
+        );
+    }
+
     // 1. Timers
     if (this.tickCount % this.TICKS_PER_SEC === 0) {
         if (this.bomb.status === BombStatus.PLANTED || this.bomb.status === BombStatus.DEFUSING) {
